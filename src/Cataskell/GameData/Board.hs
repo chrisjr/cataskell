@@ -42,7 +42,7 @@ terrains = hills ++ pastures ++ mountains ++ fields ++ forests ++ [Desert]
         forests = replicate 4 Forest
 
 rolls :: [Int]
-rolls = [2, 7, 12] ++ [3..11] ++ [3..11]
+rolls = [2, 7, 12] ++ [3..6] ++ [3..6] ++ [8..11] ++ [8..11]
 
 newHexMap :: (RandomGen g) => Rand g HexMap
 newHexMap = do
