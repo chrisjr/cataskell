@@ -29,6 +29,7 @@ library
                      Cataskell.GameData.Resources
                      Cataskell.Serialize
                      Cataskell.Util
+  ghc-options:       -fwarn-incomplete-patterns -Werror
   default-language:  Haskell2010
 
 executable cataskell-cli
@@ -38,7 +39,6 @@ executable cataskell-cli
                     , cataskell
                     , fgl
                     , fgl-visualize
-  -- emacs can't find it for editing tests; annoying
   hs-source-dirs:     cataskell-cli
   default-language:   Haskell2010
 

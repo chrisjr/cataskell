@@ -33,14 +33,10 @@ spec = do
                                , brick = 3
                                , ore = 3
                                }
-      (sufficient res1 $ cost Settlement) `shouldBe` False
-      (sufficient res1 $ cost City) `shouldBe` True
-      (sufficient res1 $ cost DevelopmentCard) `shouldBe` False
-      (sufficient res1 $ cost Road) `shouldBe` True
-      let res1' = res1 <> (mkNeg $ cost Road)
-      (sufficient res1' $ cost Road) `shouldBe` True
-      let res1'' = res1' <> (mkNeg $ cost Road)
-      (sufficient res1'' $ cost Road) `shouldBe` False
+      (sufficient res1 . cost $ unbuilt settlement) `shouldBe` False
+      (sufficient res1 . cost $ unbuilt city) `shouldBe` True
+      (sufficient res1 . cost $ unbuilt road) `shouldBe` True
+      (sufficient res1 . cost $ unbuilt devCard) `shouldBe` False
     it "can be checked against costs (ex. 2)" $ do
       let res2 = ResourceCount { lumber = 0
                                , wool = 2
@@ -48,15 +44,17 @@ spec = do
                                , brick = 1
                                , ore = 2
                                }
-      (sufficient res2 $ cost Settlement) `shouldBe` False
-      (sufficient res2 $ cost City) `shouldBe` False
-      (sufficient res2 $ cost DevelopmentCard) `shouldBe` True
-      (sufficient res2 $ cost Road) `shouldBe` False
-      let res2' = res2 <> (mkNeg $ cost DevelopmentCard)
-      (sufficient res2' $ cost DevelopmentCard) `shouldBe` True
-      let res2'' = res2' <> mempty { lumber = 1 }
-      (sufficient res2'' $ cost Settlement) `shouldBe` True
-      
+      (sufficient res2 . cost $ unbuilt settlement) `shouldBe` False
+      (sufficient res2 . cost $ unbuilt city) `shouldBe` False
+      (sufficient res2 . cost $ unbuilt road) `shouldBe` False
+      (sufficient res2 . cost $ unbuilt devCard) `shouldBe` True
+    it "can be used to pay for an item" $ do
+      let res3 = mempty { lumber = 1, brick = 1 }
+      (payFor res3 $ unbuilt road) `shouldBe` Just mempty
+      (payFor mempty $ unbuilt road) `shouldBe` Nothing
+      let res4 = mempty { wool = 1, wheat = 1, ore = 1}
+      (payFor res4 $ unbuilt devCard) `shouldBe` Just mempty
+      (payFor mempty $ unbuilt devCard) `shouldBe` Nothing      
   describe "resourceFromTerrain" $ do
     it "gets the appropriate resource for a terrain type" $ do
       resourceFromTerrain Forest `shouldBe` mempty { lumber =  1 }

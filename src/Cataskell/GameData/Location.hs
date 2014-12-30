@@ -36,10 +36,10 @@ data UndirectedEdge = UndirectedEdge
   , point2 :: Point
   } deriving (Show, Generic)
 
+instance Eq UndirectedEdge where
+  x == y = (point1 x == point1 y && point2 x == point2 y) || (point1 x == point2 y && point2 x == point1 y) 
+
 edgeType :: UndirectedEdge -> EdgeType
 edgeType e
   = if any (== Center) positions then ToCenter else Between
     where positions = map position [point1 e, point2 e]
-
-instance Eq UndirectedEdge where
-  x == y = (point1 x == point1 y && point2 x == point2 y) || (point1 x == point2 y && point2 x == point1 y) 

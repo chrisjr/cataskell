@@ -28,8 +28,12 @@ data Player = Player
   , bonuses :: [Bonus]
   } deriving (Eq, Show, Generic)
 
-getMaskedScore :: Player -> Int
-getMaskedScore p = undefined
+getDisplayScore :: Player -> Int
+getDisplayScore p = regularPoints + bonusPoints
+  where regularPoints = totalPointsOf . filter (isNotVictoryPoint) $ constructed p
+        bonusPoints   = totalPointsOf $ bonuses p
+        totalPointsOf x = sum $ map pointValue x
+
 
 getScore :: Player -> Int
 getScore p = regularPoints + bonusPoints

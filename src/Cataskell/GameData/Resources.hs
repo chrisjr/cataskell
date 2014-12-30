@@ -48,12 +48,18 @@ sufficient r c = and [lumber', wool', wheat', brick', ore']
         brick' = brick r >= brick c
         ore' = ore r >= ore c
 
-cost :: ConstructType -> ResourceCount
-cost p = case p of
-          Road -> mempty { lumber = 1, brick = 1 }
-          Settlement -> mempty { lumber = 1, brick = 1, wool = 1, wheat = 1 }
-          City -> mempty { wheat = 2, ore = 3 }
-          DevelopmentCard -> mempty { wool = 1, wheat = 1, ore = 1 }
+cost :: Construct -> ResourceCount
+cost c = case c of
+          Building (Road _) -> mempty { lumber = 1, brick = 1 }
+          Building (Habitation x _) -> case x of 
+            Settlement -> mempty { lumber = 1, brick = 1, wool = 1, wheat = 1 }
+            City -> mempty { wheat = 2, ore = 3 }
+          DevCard _ -> mempty { wool = 1, wheat = 1, ore = 1 }
+
+payFor :: ResourceCount -> Construct -> Maybe ResourceCount
+payFor r c
+  = if sufficient r expense then Just (r <> mkNeg expense) else Nothing
+  where expense = cost c
 
 resourceFromTerrain :: Terrain -> ResourceCount
 resourceFromTerrain t
