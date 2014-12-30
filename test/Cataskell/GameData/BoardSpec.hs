@@ -6,7 +6,7 @@ import Cataskell.GameData.Board
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
 import Data.Monoid (mempty)
-import System.Random
+import Control.Monad.Random
 
 main :: IO ()
 main = hspec spec
@@ -15,11 +15,11 @@ spec :: Spec
 spec = do
   describe "A Hex" $ do
     it "has a terrain type and accompanying resource" $ do
-      let hex = mkHexGraph Mountain 2
+      let hex = mkHex Mountain 2
       resource hex `shouldBe` mempty { ore = 1 }
   describe "A Board" $ do
     let rand = mkStdGen 0
-    let (board, g') = newBoard rand
+    let (board, g') = runRand newBoard rand
     let h = hexes board
     it "has a randomly generated set of terrains" $ do
       length h `shouldBe` 19

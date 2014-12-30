@@ -4,10 +4,8 @@ module Cataskell.GameData.Board where
 
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
-import Cataskell.Util (randomSt)
 import GHC.Generics (Generic)
-import System.Random
-import Control.Monad.Trans.State.Strict
+import Control.Monad.Random
 
 data Hex = Hex
  { terrain :: Terrain
@@ -16,8 +14,8 @@ data Hex = Hex
  , hasRobber :: Bool
  } deriving (Eq, Show, Generic)
 
-mkHexGraph :: Terrain -> Int -> Hex
-mkHexGraph t r 
+mkHex :: Terrain -> Int -> Hex
+mkHex t r 
   = Hex { terrain = t
         , roll = r
         , resource = resourceFromTerrain t
@@ -27,11 +25,8 @@ data Board = Board
   { hexes :: [Hex]
   }
 
-mkBoard :: State StdGen Board
-mkBoard = undefined
-
-newBoard :: StdGen -> (Board, StdGen)
-newBoard = runState mkBoard
+newBoard :: (RandomGen g) => Rand g Board
+newBoard = undefined
 
 placements :: Board -> [Construct]
 placements = undefined

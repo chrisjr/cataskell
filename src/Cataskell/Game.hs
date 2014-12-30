@@ -1,7 +1,7 @@
 module Cataskell.Game where
 
-import System.Random
+import Control.Monad.Random
 import Cataskell.GameData
 
-newGame :: StdGen -> (GameState, StdGen)
+newGame :: (RandomGen g) => Rand g GameState
 newGame = undefined

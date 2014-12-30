@@ -8,7 +8,7 @@ with haskellPackages; cabal.mkDerivation (self: {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
-  buildDepends = [ fgl fglVisualize aeson random transformers ];
+  buildDepends = [ fgl fglVisualize aeson MonadRandom randomShuffle ];
   testDepends = [ hspec QuickCheck ];
   buildTools = [ cabalInstall hsdev ];
   shellHook =
