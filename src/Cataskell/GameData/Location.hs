@@ -2,6 +2,7 @@
 
 module Cataskell.GameData.Location
 ( HexCoord
+, hexCoords
 , VertexPosition(..)
 , Point(..)
 , EdgeType(..)
@@ -14,6 +15,10 @@ import GHC.Generics (Generic)
 
 -- | Axial coordinates: see http://www.redblobgames.com/grids/hexagons/
 type HexCoord = (Int, Int)
+
+-- | Hexes for a board of radius 2 (>= distance 2 from center in axial coordinates)
+hexCoords :: [HexCoord]
+hexCoords = [ (x,y) | y <- [-2..2], x <- [-2..2], maximum [abs x, abs y, abs (x+y)] <= 2]
 
 data VertexPosition 
   = Top     -- ^ Top of a hex
@@ -28,8 +33,9 @@ data Point = Point
   } deriving (Eq, Show, Generic)
 
 data EdgeType 
-  = ToCenter  -- ^ Edge linking intersection with center (don't display)
-  | Between   -- ^ Between two intersections
+  = ToCenter        -- ^ Edge linking intersection with center (don't display)
+  | BetweenCenters  -- ^ Between two centers (don't display)
+  | Between         -- ^ Between two intersections
   deriving (Eq, Show, Generic)
 
 data UndirectedEdge = UndirectedEdge
@@ -44,6 +50,7 @@ dupleToEdge :: (Point, Point) -> UndirectedEdge
 dupleToEdge (x, y) = UndirectedEdge x y
 
 edgeType :: UndirectedEdge -> EdgeType
-edgeType e
-  = if any (== Center) positions then ToCenter else Between
+edgeType e | all (== Center) positions = BetweenCenters
+           | any (== Center) positions && any (/= Center) positions = ToCenter
+           | otherwise = Between
     where positions = map position [point1 e, point2 e]

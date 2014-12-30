@@ -8,6 +8,7 @@ import Data.Maybe (listToMaybe, fromJust)
 import Control.Applicative ((<$>))
 import Cataskell.Util
 import Cataskell.GameData.Location ( HexCoord
+                                   , hexCoords
                                    , VertexPosition(..)
                                    , Point(..)
                                    , UndirectedEdge(..)
@@ -16,10 +17,6 @@ import Cataskell.GameData.Location ( HexCoord
 
 type BoardGraph = Gr Point UndirectedEdge
 type BoardNodeContext = Context Point UndirectedEdge
-
--- | Hexes for a board of radius 2 (>= distance 2 from center in axial coordinates)
-hexCoords :: [HexCoord]
-hexCoords = [ (x,y) | y <- [-2..2], x <- [-2..2], maximum [abs x, abs y, abs (x+y)] <= 2]
 
 -- | Vertices around the edge of a given hex
 pointsAroundHex :: HexCoord -> [Point]

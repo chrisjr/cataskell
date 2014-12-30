@@ -1,10 +1,19 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Cataskell.GameData.Player where
+module Cataskell.GameData.Player
+( Player
+, color
+, resources
+, constructed
+, bonuses
+, player
+, getDisplayScore
+, getScore
+) where
 
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
--- import qualified Data.Map.Strict as Map
+import Data.Monoid (mempty)
 import GHC.Generics (Generic)
 
 data Player = Player
@@ -13,6 +22,14 @@ data Player = Player
   , constructed :: [Construct]
   , bonuses :: [Bonus]
   } deriving (Eq, Show, Generic)
+
+player :: Color -> Player
+player c = Player
+  { color = c
+  , resources = mempty
+  , constructed = []
+  , bonuses = []
+  }
 
 getDisplayScore :: Player -> Int
 getDisplayScore p = regularPoints + bonusPoints
