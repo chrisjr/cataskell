@@ -22,10 +22,15 @@ library
                    , fgl
                    , aeson
                    , containers
-  exposed-modules:   Cataskell.Board
+                   , random
+                   , transformers
+  exposed-modules:   Cataskell.BoardGraph
+                     Cataskell.Game
                      Cataskell.GameData
+                     Cataskell.GameData.Board
                      Cataskell.GameData.Basics
                      Cataskell.GameData.Location
+                     Cataskell.GameData.Player
                      Cataskell.GameData.Resources
                      Cataskell.Serialize
                      Cataskell.Util
@@ -51,5 +56,7 @@ test-suite tests
                     , fgl
                     , containers
                     , hspec
+                    , random
+                    , transformers
                     , QuickCheck
   default-language:   Haskell2010

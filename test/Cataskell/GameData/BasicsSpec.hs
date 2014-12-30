@@ -1,4 +1,4 @@
-module Cataskell.GameData.BasicsSpec where
+module Cataskell.GameData.BasicsSpec (main, spec) where
 
 import Test.Hspec
 import Cataskell.GameData.Basics
@@ -30,3 +30,7 @@ spec = do
       (pointValue $ road (Just e)) `shouldBe` 0
       (pointValue $ devCard (Just VictoryPoint)) `shouldBe` 1
       (pointValue $ devCard (Just Knight)) `shouldBe` 0
+  describe "A Bonus" $ do
+    it "should be worth 2 points" $ do
+      pointValue LongestRoad `shouldBe` 2
+      pointValue LargestArmy `shouldBe` 2

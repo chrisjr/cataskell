@@ -1,6 +1,9 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Cataskell.Util where
 
+import System.Random  
+import Control.Monad.Trans.State.Strict
+
 instance (Num a, Num b) => Num (a,b) where
   fromInteger x = (fromInteger x, fromInteger x)
   (a,b) + (a',b') = (a + a', b + b')
@@ -16,3 +19,10 @@ windowed size ls@(_:xs) =
   if length ls >= size 
   then (take size ls) : windowed size xs 
   else windowed size xs
+
+listToDuple :: (Show a) => [a] -> Maybe (a, a)
+listToDuple (x:y:[]) = Just (x, y)
+listToDuple _ = Nothing
+
+randomSt :: (RandomGen g, Random a) => State g a  
+randomSt = state random  

@@ -6,6 +6,7 @@ module Cataskell.GameData.Location
 , Point(..)
 , EdgeType(..)
 , UndirectedEdge(..)
+, dupleToEdge
 , edgeType
 ) where
 
@@ -38,6 +39,9 @@ data UndirectedEdge = UndirectedEdge
 
 instance Eq UndirectedEdge where
   x == y = (point1 x == point1 y && point2 x == point2 y) || (point1 x == point2 y && point2 x == point1 y) 
+
+dupleToEdge :: (Point, Point) -> UndirectedEdge
+dupleToEdge (x, y) = UndirectedEdge x y
 
 edgeType :: UndirectedEdge -> EdgeType
 edgeType e

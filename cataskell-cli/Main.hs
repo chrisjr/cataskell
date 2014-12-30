@@ -1,4 +1,4 @@
-import Cataskell.Board
+import Cataskell.BoardGraph
 import Cataskell.GameData.Location
 import Data.Graph.Inductive.Dot
 import Data.Graph.Inductive.Basic

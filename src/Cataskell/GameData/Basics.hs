@@ -1,8 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Cataskell.GameData.Basics
 ( Valuable(..)
 , Inhabited(..)
-, Built(..)
+, Locatable(..)
 , DevelopmentCard(..)
 , Construct(..)
 , unbuilt
@@ -27,7 +29,7 @@ data Inhabited = Settlement | City
   deriving (Eq, Show, Generic)
 
 -- | Types of placeable items by players
-data Built
+data Locatable
   = Habitation Inhabited (Maybe Point)
   | Road (Maybe UndirectedEdge)
   deriving (Eq, Show, Generic)
@@ -36,8 +38,8 @@ data Built
 data DevelopmentCard = Knight | RoadBuilding | Invention | Monopoly | VictoryPoint
   deriving (Eq, Show, Generic)
 
-data Construct 
-  = Building Built
+data Construct
+  = Building Locatable
   | DevCard (Maybe DevelopmentCard)
   deriving (Eq, Show, Generic)
 

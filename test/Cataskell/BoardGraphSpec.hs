@@ -1,8 +1,8 @@
-module Cataskell.BoardSpec (main, spec) where
+module Cataskell.BoardGraphSpec (main, spec) where
 
 import Test.Hspec
 import Test.QuickCheck
-import Cataskell.Board
+import Cataskell.BoardGraph
 import Cataskell.GameData.Location
 import Data.List
 import Data.Maybe
@@ -46,15 +46,12 @@ spec = do
       countNodes (isPos Top) boardGraph `shouldBe` (27 :: Int)
       countNodes (isPos Bottom) boardGraph `shouldBe` (27 :: Int)
     it "has 6 points in each center's neighborhood" $ do
-      let centers = map (\x -> Point { coord = x, position = Center }) hexes
+      let centers = map (\x -> Point { coord = x, position = Center }) hexCoords
       let centerNodes = mapMaybe (\x -> getNodeMaybe x boardGraph) centers
       let neighborhoods = map (nub . neighbors boardGraph) centerNodes
       all (\x -> length x == 6) neighborhoods `shouldBe` True
-  
-  describe "A board" $ do
-    it "has a randomly generated set of terrains" $ do
-      error "Not yet implemented"
-      True `shouldBe` False      
-    it "has no high-value terrains (6 or 8) next to each other" $ do
-      error "nope"
-      True `shouldBe` False
+    it "should return the neighbors of a specified point" $ do
+      let hC = (0, 0)
+      let p = Point hC Center
+      let pNeighbors = tail . fst $ mkHexGraph hC
+      neighborPoints p `shouldBe` pNeighbors

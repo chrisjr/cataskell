@@ -1,4 +1,4 @@
-module Cataskell.GameData.ResourcesSpec where
+module Cataskell.GameData.ResourcesSpec (main, spec) where
 
 import Test.Hspec
 import Test.QuickCheck
