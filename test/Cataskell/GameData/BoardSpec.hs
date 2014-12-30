@@ -33,7 +33,24 @@ spec = do
       ((Map.!) rollCounts 2) `shouldBe` 1
       ((Map.!) rollCounts 7) `shouldBe` 1
       ((Map.!) rollCounts 12) `shouldBe` 1
-      (all (== 2) $ map ((Map.!) rollCounts) [3..11]) `shouldBe` True
+      (all (== 2) $ map ((Map.!) rollCounts) [3..6]) `shouldBe` True
+      (all (== 2) $ map ((Map.!) rollCounts) [8..11]) `shouldBe` True
+
+    it "should have 3 hills, 4 pastures, 3 mountains, 4 fields, 4 forests, and 1 desert" $ do
+      let terrains = group . sort . map snd . Map.toList $ Map.map terrain hexMap
+      let terrainCounts = Map.fromList $ zip (map head terrains) (map length terrains)
+      ((Map.!) terrainCounts Hill) `shouldBe` 3
+      ((Map.!) terrainCounts Pasture) `shouldBe` 4
+      ((Map.!) terrainCounts Mountain) `shouldBe` 3
+      ((Map.!) terrainCounts Field) `shouldBe` 4
+      ((Map.!) terrainCounts Forest) `shouldBe` 4
+      ((Map.!) terrainCounts Desert) `shouldBe` 1
+
+    describe "the Desert" $ do
+      it "should have roll equal to 7" $ do
+        let desertHex = head . filter ((== Desert) . terrain) . map snd $ Map.toList hexMap
+        roll desertHex `shouldBe` 7
+
 
   describe "A Board" $ do
     let rand = mkStdGen 999

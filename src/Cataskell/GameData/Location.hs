@@ -24,24 +24,24 @@ data VertexPosition
   = Top     -- ^ Top of a hex
   | Bottom  -- ^ Bottom of a hex
   | Center  -- ^ Center (location of chits/robber)
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | Describes a board location
 data Point = Point
   { coord :: HexCoord
   , position :: VertexPosition
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Ord, Show, Generic)
 
 data EdgeType 
   = ToCenter        -- ^ Edge linking intersection with center (don't display)
   | BetweenCenters  -- ^ Between two centers (don't display)
   | Between         -- ^ Between two intersections
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 data UndirectedEdge = UndirectedEdge
   { point1 :: Point
   , point2 :: Point
-  } deriving (Show, Generic)
+  } deriving (Ord, Show, Generic)
 
 instance Eq UndirectedEdge where
   x == y = (point1 x == point1 y && point2 x == point2 y) || (point1 x == point2 y && point2 x == point1 y) 

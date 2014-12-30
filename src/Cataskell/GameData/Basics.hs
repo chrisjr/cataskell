@@ -26,22 +26,22 @@ class Valuable a where
 
 -- | Types of buildings that live on points
 data Inhabited = Settlement | City
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | Types of placeable items by players
 data Locatable
   = Habitation Inhabited (Maybe Point)
   | Road (Maybe UndirectedEdge)
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | Development cards for special actions
 data DevelopmentCard = Knight | RoadBuilding | Invention | Monopoly | VictoryPoint
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 data Construct
   = Building Locatable
   | DevCard (Maybe DevelopmentCard)
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 unbuilt :: (Maybe a -> Construct) -> Construct
 unbuilt x = x Nothing
@@ -71,15 +71,15 @@ instance Valuable Construct where
 
 -- | Different terrains produce different resources
 data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | Possible colors of player tokens
 data Color = Red | Blue | Orange | White
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | Bonuses conferred when achieving longest road/largest army
 data Bonus = LongestRoad | LargestArmy
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Ord, Show, Generic)
 
 instance Valuable Bonus where
 	pointValue _ = 2

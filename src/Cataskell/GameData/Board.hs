@@ -7,6 +7,7 @@ import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
 import qualified Data.Map.Strict as Map
+import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
 
@@ -21,10 +22,13 @@ type HexMap = Map.Map HexCoord Hex
 
 mkHex :: Terrain -> Int -> Hex
 mkHex t r 
-  = Hex { terrain = t
-        , roll = r
-        , resource = resourceFromTerrain t
-        , hasRobber = t == Desert }
+  = let shouldBeDesert = t == Desert || r == 7
+        t' = assert (shouldBeDesert == (t == Desert)) t
+        r' = assert (shouldBeDesert == (r == 7)) r
+    in Hex { terrain = t'
+           , roll = r'
+           , resource = resourceFromTerrain t'
+           , hasRobber = shouldBeDesert }
 
 hexMapFromList :: [Hex] -> HexMap
 hexMapFromList = Map.fromList . zip hexCoords
