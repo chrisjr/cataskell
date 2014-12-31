@@ -45,19 +45,17 @@ spec = do
       countNodes isIntersection boardGraph `shouldBe` (54 :: Int)
       countNodes (isPos Top) boardGraph `shouldBe` (27 :: Int)
       countNodes (isPos Bottom) boardGraph `shouldBe` (27 :: Int)
-    it "has 6 points in each center's neighborhood" $ do
-      let centers = map (\x -> Point { coord = x, position = Center }) hexCoords
-      let centerNodes = mapMaybe (\x -> getNodeMaybe x boardGraph) centers
-      let neighborhoods = map (nub . neighbors boardGraph) centerNodes
-      all (\x -> length x == 6) neighborhoods `shouldBe` True
-    it "should be linked between centers" $ do
-      let mkCenter x = Point { coord = x, position = Center }
+    it "has 6 top/bottom points in each center's neighborhood" $ do
       let centers = map mkCenter hexCoords
-      let centerNeighborPoints = sort . map (sort . map mkCenter . neighborCoords) $ hexCoords
-      let centerNeighborhoods = [] :: [[Point]]
-      centerNeighborhoods `shouldBe` centerNeighborPoints
-    it "should return the neighbors of a specified point" $ do
+      let neighborhoods = map (filter isIntersection . nub . neighborPoints boardGraph) centers
+      all (\x -> length x == 6) neighborhoods `shouldBe` True
+    it "should return the top/bottom neighbors of a specified point" $ do
       let hC = (0, 0)
       let p = Point hC Center
       let pNeighbors = tail . fst $ mkHexGraph hC
-      (sort $ neighborPoints boardGraph p) `shouldBe` sort pNeighbors
+      (sort . filter isIntersection $ neighborPoints boardGraph p) `shouldBe` sort pNeighbors
+    it "should be linked between centers" $ do
+      let centers = map mkCenter hexCoords
+      let centerNeighborPoints = sort . map (sort . map mkCenter . neighborCoords) $ hexCoords
+      let centerNeighborhoods = sort $ map (sort . neighborPoints centerConnections) centers
+      centerNeighborhoods `shouldBe` centerNeighborPoints

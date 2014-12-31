@@ -5,8 +5,10 @@ module Cataskell.GameData.Location
 , withinHexRadius
 , hexCoords
 , neighborCoords
+, hexNeighborhoods
 , VertexPosition(..)
 , Point(..)
+, mkCenter
 , EdgeType(..)
 , UndirectedEdge(..)
 , dupleToEdge
@@ -14,6 +16,8 @@ module Cataskell.GameData.Location
 ) where
 
 import Cataskell.Util()
+import Data.List (delete)
+import qualified Data.Map.Strict as Map
 import GHC.Generics (Generic)
 
 -- | Axial coordinates: see http://www.redblobgames.com/grids/hexagons/
@@ -29,9 +33,18 @@ withinHexRadius i c
 hexCoords :: [HexCoord]
 hexCoords = [ (x,y) | y <- [-2..2], x <- [-2..2], (withinHexRadius 2 (0, 0)) (x, y)]
 
--- | Return the neighbors plus the coordinate itself
+-- | Return a coordinate's neighbors (restricted to actually existing coords)
 neighborCoords :: HexCoord -> [HexCoord]
-neighborCoords c = [ (x,y) + c | y <- [-1..1], x <- [-1..1], (withinHexRadius 1 c) $ (x, y) + c]
+neighborCoords c
+  = let lst = [ (x,y) + c | y <- [-1..1], x <- [-1..1], (withinHexRadius 1 c) $ (x, y) + c]
+    in  filter (\x -> x /= c && x `elem` hexCoords) lst
+
+hexNeighborhoods :: Map.Map HexCoord [HexCoord]
+hexNeighborhoods = Map.fromList hexN
+  where hexN = zip hexCoords nns
+        nns = map getNs hexCoords
+        getNs hc = let nc = neighborCoords hc
+                   in  delete hc nc
 
 data VertexPosition 
   = Top     -- ^ Top of a hex
@@ -44,6 +57,9 @@ data Point = Point
   { coord :: HexCoord
   , position :: VertexPosition
   } deriving (Eq, Ord, Show, Generic)
+
+mkCenter :: HexCoord -> Point
+mkCenter hexCoord = Point { coord = hexCoord, position = Center }
 
 data EdgeType 
   = ToCenter        -- ^ Edge linking intersection with center (don't display)
