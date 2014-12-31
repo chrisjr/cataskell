@@ -1,6 +1,7 @@
 module Cataskell.GameData.LocationSpec (main, spec) where
 
 import Test.Hspec
+import Data.List (sort)
 import Cataskell.GameData.Location
 
 main :: IO ()
@@ -8,6 +9,18 @@ main = hspec spec
 
 spec :: Spec
 spec = do
+  describe "A HexCoord" $ do
+    let aroundNegOneTwo = [((-1),1), (0,1), (0,2),((-1),3),((-2),3), ((-2),2)]
+    let n = [(0, 0), (1, 0), (1, 1), (1, 2), (0, 3)]
+    let notAroundNegOneTwo = n ++ [((-1), 4), ((-2), 4), ((-3), 4), ((-3), (-3)), ((-3), 2), ((-2), 1)]
+    it "can be tested to be in a certain radius" $ do
+      let check = withinHexRadius 1 (-1, 2)
+      all check aroundNegOneTwo `shouldBe` True
+      any check notAroundNegOneTwo `shouldBe` False
+    it "can get neighboring coordinates (plus the original point)" $ do
+      let ns = sort $ neighborCoords (-1, 2)
+      let ns' = (-1, 2):aroundNegOneTwo
+      ns `shouldBe` (sort ns')
   describe "A Point" $ do
     it "has a hex coordinate and position" $ do
       let p = Point { coord = (0,0), position = Top }

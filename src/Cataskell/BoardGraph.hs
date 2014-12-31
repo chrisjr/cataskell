@@ -100,8 +100,11 @@ boardGraph = foldl (flip addHex) start hexCoords
 countNodes :: (Point -> Bool) -> BoardGraph -> Int
 countNodes p gr = length $ filter p $ map snd $ labNodes gr
 
-neighborPoints :: Point -> [Point]
-neighborPoints = undefined
+neighborPoints :: BoardGraph -> Point -> [Point]
+neighborPoints gr p
+  = let thisNode = fromJust $ getNodeMaybe p gr
+        nn = neighbors gr thisNode
+    in  map snd . filter (\(n, _) -> n `elem` nn) $ labNodes gr
 
 boardPrint :: BoardGraph -> IO ()
 boardPrint = prettyPrint

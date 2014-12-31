@@ -1,6 +1,8 @@
 module Cataskell.GameData.BoardSpec (main, spec) where
 
 import Test.Hspec
+import Control.Exception
+import Control.DeepSeq
 import Test.QuickCheck
 import Cataskell.GameData.Board
 import Cataskell.GameData.Basics
@@ -9,6 +11,9 @@ import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty)
 import Control.Monad.Random
+
+instance NFData Terrain
+instance NFData Hex
 
 main :: IO ()
 main = hspec spec
@@ -19,6 +24,10 @@ spec = do
     it "has a terrain type and accompanying resource" $ do
       let hex = mkHex Mountain 2
       resource hex `shouldBe` mempty { ore = 1 }
+    it "cannot be made with Desert && roll != 7, or !Desert && roll == 7" $ do
+      terrain (mkHex Desert 7) `shouldBe` Desert
+      (evaluate . force) (mkHex Desert 5) `shouldThrow` (const True :: Selector AssertionFailed)
+      (evaluate . force) (mkHex Mountain 7) `shouldThrow` (const True :: Selector AssertionFailed)
 
   describe "A HexGenerator" $ do
     let rand = mkStdGen 0
@@ -51,13 +60,13 @@ spec = do
         let desertHex = head . filter ((== Desert) . terrain) . map snd $ Map.toList hexMap
         roll desertHex `shouldBe` 7
 
-
   describe "A Board" $ do
     let rand = mkStdGen 999
     let (board, g') = runRand newBoard rand
     let h = hexes board
-    it "has a randomly generated set of terrains" $ do
-      Map.size h `shouldBe` 19
-    it "has no high-value terrains (6 or 8) next to each other" $ do
-      Map.size h `shouldBe` 19
-      True `shouldBe` False
+    describe "has a HexMap" $ do
+      it "with a randomly generated set of terrains" $ do
+        Map.size h `shouldBe` 19
+      it "with no high-value terrains (6 or 8) next to each other" $ do
+        Map.size h `shouldBe` 19
+        checkNeighbors h `shouldBe` True

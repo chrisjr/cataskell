@@ -50,8 +50,14 @@ spec = do
       let centerNodes = mapMaybe (\x -> getNodeMaybe x boardGraph) centers
       let neighborhoods = map (nub . neighbors boardGraph) centerNodes
       all (\x -> length x == 6) neighborhoods `shouldBe` True
+    it "should be linked between centers" $ do
+      let mkCenter x = Point { coord = x, position = Center }
+      let centers = map mkCenter hexCoords
+      let centerNeighborPoints = sort . map (sort . map mkCenter . neighborCoords) $ hexCoords
+      let centerNeighborhoods = [] :: [[Point]]
+      centerNeighborhoods `shouldBe` centerNeighborPoints
     it "should return the neighbors of a specified point" $ do
       let hC = (0, 0)
       let p = Point hC Center
       let pNeighbors = tail . fst $ mkHexGraph hC
-      neighborPoints p `shouldBe` pNeighbors
+      (sort $ neighborPoints boardGraph p) `shouldBe` sort pNeighbors

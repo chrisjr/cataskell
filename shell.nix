@@ -9,7 +9,7 @@ with haskellPackages; cabal.mkDerivation (self: {
   isLibrary = true;
   isExecutable = true;
   buildDepends = [ fgl fglVisualize aeson MonadRandom randomShuffle ];
-  testDepends = [ hspec QuickCheck ];
+  testDepends = [ hspec QuickCheck deepseq ];
   buildTools = [ cabalInstall hsdev ];
   shellHook =
     ''

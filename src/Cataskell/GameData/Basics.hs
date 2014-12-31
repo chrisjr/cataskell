@@ -12,7 +12,7 @@ module Cataskell.GameData.Basics
 , city
 , road
 , devCard
-, isNotVictoryPoint
+, isVictoryPoint
 , Terrain(..)
 , Color(..)
 , Bonus(..)
@@ -21,17 +21,26 @@ module Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 import GHC.Generics (Generic)
 
+-- | Possible colors of player tokens
+data Color = Red | Blue | Orange | White
+  deriving (Eq, Ord, Show, Generic)
+
+-- | Different terrains produce different resources
+data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
+  deriving (Eq, Ord, Show, Generic)
+
+-- | Class of items with point value
 class Valuable a where
-	pointValue :: a -> Int
+  pointValue :: a -> Int
 
 -- | Types of buildings that live on points
 data Inhabited = Settlement | City
   deriving (Eq, Ord, Show, Generic)
 
--- | Types of placeable items by players
+-- | Types of placeable items by players (if placed, must also have a player color)
 data Locatable
-  = Habitation Inhabited (Maybe Point)
-  | Road (Maybe UndirectedEdge)
+  = Habitation Inhabited (Maybe (Point, Color))
+  | Road (Maybe (UndirectedEdge, Color))
   deriving (Eq, Ord, Show, Generic)
 
 -- | Development cards for special actions
@@ -46,22 +55,22 @@ data Construct
 unbuilt :: (Maybe a -> Construct) -> Construct
 unbuilt x = x Nothing
 
-settlement :: Maybe Point -> Construct
+settlement :: Maybe (Point, Color) -> Construct
 settlement = Building . Habitation Settlement
 
-city :: Maybe Point -> Construct
+city :: Maybe (Point, Color) -> Construct
 city = Building . Habitation City
 
-road :: Maybe UndirectedEdge -> Construct
+road :: Maybe (UndirectedEdge, Color) -> Construct
 road = Building . Road
 
 devCard :: Maybe DevelopmentCard -> Construct
 devCard = DevCard
 
-isNotVictoryPoint :: Construct -> Bool
-isNotVictoryPoint x = case x of
-  DevCard (Just VictoryPoint) -> False
-  _ -> True
+isVictoryPoint :: Construct -> Bool
+isVictoryPoint x = case x of
+  DevCard (Just VictoryPoint) -> True
+  _ -> False
 
 instance Valuable Construct where
   pointValue (Building (Habitation Settlement (Just _))) = 1
@@ -69,17 +78,9 @@ instance Valuable Construct where
   pointValue (DevCard (Just VictoryPoint)) = 1
   pointValue _ = 0
 
--- | Different terrains produce different resources
-data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
-  deriving (Eq, Ord, Show, Generic)
-
--- | Possible colors of player tokens
-data Color = Red | Blue | Orange | White
-  deriving (Eq, Ord, Show, Generic)
-
 -- | Bonuses conferred when achieving longest road/largest army
 data Bonus = LongestRoad | LargestArmy
   deriving (Eq, Ord, Show, Generic)
 
 instance Valuable Bonus where
-	pointValue _ = 2
+  pointValue _ = 2

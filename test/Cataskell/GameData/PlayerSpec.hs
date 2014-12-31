@@ -26,6 +26,8 @@ spec = do
       }
 
     it "should have a score" $ do
-      getScore p2 `shouldBe` 3
+      score p2 `shouldBe` 3
     it "should have a display score" $ do
-      getDisplayScore p2 `shouldBe` 2
+      displayScore p2 `shouldBe` 2
+    it "can have development cards" $ do
+      devCards p2 `shouldBe` [VictoryPoint]

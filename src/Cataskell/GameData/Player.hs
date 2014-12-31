@@ -7,8 +7,9 @@ module Cataskell.GameData.Player
 , constructed
 , bonuses
 , player
-, getDisplayScore
-, getScore
+, displayScore
+, score
+, devCards
 ) where
 
 import Cataskell.GameData.Basics
@@ -31,15 +32,20 @@ player c = Player
   , bonuses = []
   }
 
-getDisplayScore :: Player -> Int
-getDisplayScore p = regularPoints + bonusPoints
-  where regularPoints = totalPointsOf . filter (isNotVictoryPoint) $ constructed p
-        bonusPoints   = totalPointsOf $ bonuses p
-        totalPointsOf x = sum $ map pointValue x
+totalPointsOf :: Valuable a => [a] -> Int
+totalPointsOf = sum . map pointValue
 
-
-getScore :: Player -> Int
-getScore p = regularPoints + bonusPoints
-  where regularPoints = totalPointsOf $ constructed p
+displayScore :: Player -> Int
+displayScore p = regularPoints + bonusPoints
+  where regularPoints = totalPointsOf . filter (not . isVictoryPoint) $ constructed p
         bonusPoints   = totalPointsOf $ bonuses p
-        totalPointsOf x = sum $ map pointValue x
+
+score :: Player -> Int
+score p = displayScore p + victoryPointCards
+  where victoryPointCards = totalPointsOf . filter isVictoryPoint $ constructed p
+
+devCards :: Player -> [DevelopmentCard]
+devCards = concatMap getDevCard . constructed
+  where getDevCard c = case c of
+          DevCard (Just x) -> [x]
+          _ -> []

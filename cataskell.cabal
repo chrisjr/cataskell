@@ -35,7 +35,7 @@ library
                      Cataskell.GameData.Resources
                      Cataskell.Serialize
                      Cataskell.Util
-  ghc-options:       -fwarn-incomplete-patterns -Werror
+  ghc-options:       -fwarn-incomplete-patterns -fno-ignore-asserts -Werror
   default-language:  Haskell2010
 
 executable cataskell-cli
@@ -52,6 +52,7 @@ test-suite tests
   type:               exitcode-stdio-1.0
   hs-source-dirs:     test
   main-is:            Spec.hs
+  ghc-options:        -fno-ignore-asserts
   build-depends:      base
                     , cataskell
                     , fgl
@@ -60,5 +61,6 @@ test-suite tests
                     , random
                     , random-shuffle
                     , MonadRandom
+                    , deepseq
                     , QuickCheck
   default-language:   Haskell2010
