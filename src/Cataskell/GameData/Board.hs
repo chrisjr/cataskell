@@ -1,16 +1,21 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module Cataskell.GameData.Board 
-( Hex
+( HexCenter
+, HexMap
+, BuildingMap
+, RoadMap
 , terrain
 , resource
 , roll
 , hasRobber
-, mkHex
+, mkHexCenter
 , hexMapFromList
 , checkNeighbors
 , Board(..)
 , newHexMap
+, emptyBuildingMap
+, emptyRoadMap
 , newBoard
 ) where
 
@@ -23,34 +28,37 @@ import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
 
-data Hex = Hex
+data HexCenter = HexCenter
  { terrain :: Terrain
  , resource :: ResourceCount
  , roll :: Int
  , hasRobber :: Bool
- } deriving (Eq, Show, Generic)
+ } deriving (Eq, Ord, Show, Generic)
 
-type HexMap = Map.Map HexCoord Hex
+type HexMap = Map.Map Point HexCenter
+type RoadMap = Map.Map UndirectedEdge ActualRoad
+type BuildingMap = Map.Map Point ActualBuilding
 
-mkHexUnsafe :: Terrain -> Int -> Hex
-mkHexUnsafe t r = Hex { terrain = t
-                      , roll = r
-                      , resource = resourceFromTerrain t
-                      , hasRobber = t == Desert }
+mkHexCenterUnsafe :: Terrain -> Int -> HexCenter
+mkHexCenterUnsafe t r = HexCenter { terrain = t
+                                  , roll = r
+                                  , resource = resourceFromTerrain t
+                                  , hasRobber = t == Desert }
 
 -- | Make a hex with appropriate roll and terrain
-mkHex :: Terrain -> Int -> Hex
-mkHex t r = assert ((t == Desert) == (r == 7)) $ mkHexUnsafe t r
+mkHexCenter :: Terrain -> Int -> HexCenter
+mkHexCenter t r = assert ((t == Desert) == (r == 7)) $ mkHexCenterUnsafe t r
 
-desert :: Hex
-desert = mkHex Desert 7
+desert :: HexCenter
+desert = mkHexCenter Desert 7
 
-hexMapFromList :: [Hex] -> HexMap
-hexMapFromList = Map.fromList . zip hexCoords
+hexMapFromList :: [HexCenter] -> HexMap
+hexMapFromList = Map.fromList . zip hexCenterPoints
 
 data Board = Board
   { hexes :: HexMap
-  , placements :: [Construct]
+  , roads :: RoadMap
+  , buildings :: BuildingMap
   } deriving (Eq, Show, Generic)
 
 terrains :: [Terrain]
@@ -72,13 +80,20 @@ newHexMap = do
   terrains' <- shuffleM terrains
   rolls' <- shuffleM rolls
   desertLocation <- getRandomR (0, length terrains' - 1)
-  let hexList = map (uncurry mkHex) $ zip terrains' rolls'
+  let hexList = map (uncurry mkHexCenter) $ zip terrains' rolls'
   let (start, end) = splitAt desertLocation hexList
   let hexList' = start ++ [desert] ++ end
   return $ hexMapFromList hexList'
+
+emptyBuildingMap :: BuildingMap
+emptyBuildingMap = undefined
+
+emptyRoadMap :: RoadMap
+emptyRoadMap = undefined
 
 newBoard :: (RandomGen g) => Rand g Board
 newBoard = do
   hexMap <- newHexMap
   return Board { hexes = hexMap
-               , placements = [] }
+               , roads = emptyRoadMap
+               , buildings = emptyBuildingMap }

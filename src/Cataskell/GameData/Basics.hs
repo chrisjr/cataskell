@@ -4,8 +4,14 @@
 module Cataskell.GameData.Basics
 ( Valuable(..)
 , Inhabited(..)
-, Locatable(..)
+, Road(..)
+, PotentialBuilding(..)
 , DevelopmentCard(..)
+, PotentialItem(..)
+, ActualHabitation(..)
+, ActualRoad(..)
+, ActualBuilding(..)
+, ActualItem(..)
 , Construct(..)
 , unbuilt
 , settlement
@@ -13,8 +19,10 @@ module Cataskell.GameData.Basics
 , road
 , devCard
 , isVictoryPoint
+, getBuilding
 , Terrain(..)
 , Color(..)
+, Colored(..)
 , Bonus(..)
 ) where
 
@@ -33,49 +41,94 @@ data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
 class Valuable a where
   pointValue :: a -> Int
 
+-- | Class of items that may have a color
+class Colored a where
+  color :: a -> Color
+
 -- | Types of buildings that live on points
 data Inhabited = Settlement | City
   deriving (Eq, Ord, Show, Generic)
 
+data Road = Road
+  deriving (Eq, Ord, Show, Generic)
+
 -- | Types of placeable items by players (if placed, must also have a player color)
-data Locatable
-  = Habitation Inhabited (Maybe (Point, Color))
-  | Road (Maybe (UndirectedEdge, Color))
+data PotentialBuilding
+  = HabitationToBe Inhabited
+  | RoadToBe Road
   deriving (Eq, Ord, Show, Generic)
 
 -- | Development cards for special actions
 data DevelopmentCard = Knight | RoadBuilding | Invention | Monopoly | VictoryPoint
   deriving (Eq, Ord, Show, Generic)
 
-data Construct
-  = Building Locatable
-  | DevCard (Maybe DevelopmentCard)
+data PotentialItem = Potential PotentialBuilding | DevCard
   deriving (Eq, Ord, Show, Generic)
 
-unbuilt :: (Maybe a -> Construct) -> Construct
-unbuilt x = x Nothing
+data ActualHabitation = H Inhabited Point Color
+  deriving (Eq, Ord, Show, Generic)
+
+data ActualRoad = R Road UndirectedEdge Color
+  deriving (Eq, Ord, Show, Generic)
+
+data ActualBuilding
+  = OnPoint ActualHabitation
+  | OnEdge ActualRoad
+  deriving (Eq, Ord, Show, Generic)
+
+data ActualItem
+  = Building ActualBuilding
+  | Card DevelopmentCard
+  deriving (Eq, Ord, Show, Generic)
+
+data Construct
+  = Built ActualItem
+  | Unbuilt PotentialItem
+  deriving (Eq, Ord, Show, Generic)
+
+instance Colored ActualBuilding where
+  color (OnPoint (H _ _ c)) = c
+  color (OnEdge (R _ _ c)) = c
+
+unbuilt :: (Maybe a -> Construct) -> PotentialItem
+unbuilt x = case x Nothing of
+  Unbuilt p -> p
+  Built _ -> error "Can't get PotentialItem from ActualItem"
 
 settlement :: Maybe (Point, Color) -> Construct
-settlement = Building . Habitation Settlement
+settlement x = case x of
+  Just (p, c) -> Built . Building . OnPoint $ H Settlement p c
+  Nothing -> Unbuilt . Potential $ HabitationToBe Settlement
 
 city :: Maybe (Point, Color) -> Construct
-city = Building . Habitation City
+city x = case x of
+  Just (p, c) -> Built . Building . OnPoint $ H City p c
+  Nothing -> Unbuilt . Potential $ HabitationToBe City
 
 road :: Maybe (UndirectedEdge, Color) -> Construct
-road = Building . Road
+road x = case x of
+  Just (e, c) -> Built . Building $ OnEdge $ R Road e c
+  Nothing -> Unbuilt . Potential $ RoadToBe Road
 
 devCard :: Maybe DevelopmentCard -> Construct
-devCard = DevCard
+devCard  x = case x of
+  Just d -> Built $ Card d
+  Nothing -> Unbuilt $ DevCard
 
-isVictoryPoint :: Construct -> Bool
+isVictoryPoint :: ActualItem -> Bool
 isVictoryPoint x = case x of
-  DevCard (Just VictoryPoint) -> True
+  Card VictoryPoint -> True
   _ -> False
 
-instance Valuable Construct where
-  pointValue (Building (Habitation Settlement (Just _))) = 1
-  pointValue (Building (Habitation City (Just _))) = 2
-  pointValue (DevCard (Just VictoryPoint)) = 1
+getBuilding :: ActualItem -> Maybe ActualBuilding
+getBuilding x = case x of
+  Building y -> Just y
+  Card _ -> Nothing
+
+instance Valuable ActualItem where
+  pointValue (Building (OnPoint (H Settlement _ _))) = 1
+  pointValue (Building (OnPoint (H City _ _))) = 2
+  pointValue (Card VictoryPoint) = 1
   pointValue _ = 0
 
 -- | Bonuses conferred when achieving longest road/largest army

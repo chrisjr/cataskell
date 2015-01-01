@@ -27,7 +27,7 @@ library
                    , MonadRandom
   exposed-modules:   Cataskell.BoardGraph
                      Cataskell.Game
-                     Cataskell.GameData
+                     Cataskell.GameData.Actions
                      Cataskell.GameData.Board
                      Cataskell.GameData.Basics
                      Cataskell.GameData.Location

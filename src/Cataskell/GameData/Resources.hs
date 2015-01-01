@@ -13,7 +13,7 @@ data ResourceCount = ResourceCount
   , wheat :: Int
   , brick :: Int
   , ore :: Int
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Ord, Show, Generic)
 
 instance FromJSON ResourceCount
 instance ToJSON ResourceCount
@@ -48,18 +48,20 @@ sufficient r c = and [lumber', wool', wheat', brick', ore']
         brick' = brick r >= brick c
         ore' = ore r >= ore c
 
-cost :: Construct -> ResourceCount
+cost :: PotentialItem -> ResourceCount
 cost c = case c of
-          Building (Road _) -> mempty { lumber = 1, brick = 1 }
-          Building (Habitation x _) -> case x of 
-            Settlement -> mempty { lumber = 1, brick = 1, wool = 1, wheat = 1 }
-            City -> mempty { wheat = 2, ore = 3 }
-          DevCard _ -> mempty { wool = 1, wheat = 1, ore = 1 }
+  Potential (HabitationToBe Settlement) -> mempty { lumber = 1, brick = 1, wool = 1, wheat = 1 }
+  Potential (HabitationToBe City) -> mempty { wheat = 2, ore = 3 }
+  Potential (RoadToBe Road) ->  mempty { lumber = 1, brick = 1 }
+  DevCard -> mempty { wool = 1, wheat = 1, ore = 1 }
 
-payFor :: ResourceCount -> Construct -> Maybe ResourceCount
+payFor :: ResourceCount -> PotentialItem -> Maybe ResourceCount
 payFor r c
   = if sufficient r expense then Just (r <> mkNeg expense) else Nothing
   where expense = cost c
+
+nonNegative :: ResourceCount -> Bool
+nonNegative = (flip sufficient) mempty
 
 resourceFromTerrain :: Terrain -> ResourceCount
 resourceFromTerrain t

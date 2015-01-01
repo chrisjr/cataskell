@@ -6,7 +6,8 @@ module Cataskell.GameData.Player
 , resources
 , constructed
 , bonuses
-, player
+, mkPlayer
+, validPlayer
 , displayScore
 , score
 , devCards
@@ -15,22 +16,32 @@ module Cataskell.GameData.Player
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
 import Data.Monoid (mempty)
+import Data.Maybe
 import GHC.Generics (Generic)
 
 data Player = Player
-  { color :: Color
+  { playerColor :: Color
   , resources :: ResourceCount
-  , constructed :: [Construct]
+  , constructed :: [ActualItem]
   , bonuses :: [Bonus]
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Ord, Generic)
 
-player :: Color -> Player
-player c = Player
-  { color = c
+instance Colored Player where
+  color = playerColor
+
+mkPlayer :: Color -> Player
+mkPlayer c = Player
+  { playerColor = c
   , resources = mempty
   , constructed = []
   , bonuses = []
   }
+
+validPlayer :: Player -> Bool
+validPlayer p
+  = let resourcesNonNegative = nonNegative $ resources p
+        allBuildingsColoredRight = all (== color p) . map color . catMaybes . map getBuilding $ constructed p
+    in resourcesNonNegative && allBuildingsColoredRight
 
 totalPointsOf :: Valuable a => [a] -> Int
 totalPointsOf = sum . map pointValue
@@ -47,5 +58,5 @@ score p = displayScore p + victoryPointCards
 devCards :: Player -> [DevelopmentCard]
 devCards = concatMap getDevCard . constructed
   where getDevCard c = case c of
-          DevCard (Just x) -> [x]
+          Card x -> [x]
           _ -> []

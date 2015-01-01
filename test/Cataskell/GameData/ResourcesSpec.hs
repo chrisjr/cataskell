@@ -9,11 +9,11 @@ import Cataskell.GameData.Resources
 
 instance Arbitrary ResourceCount where
   arbitrary = do
-    lumber' <- arbitrary
-    wool' <- arbitrary
-    wheat' <- arbitrary
-    brick' <- arbitrary
-    ore' <- arbitrary
+    NonNegative lumber' <- arbitrary
+    NonNegative wool' <- arbitrary
+    NonNegative wheat' <- arbitrary
+    NonNegative brick' <- arbitrary
+    NonNegative ore' <- arbitrary
     return $ ResourceCount lumber' wool' wheat' brick' ore'
 
 main :: IO ()
@@ -54,7 +54,9 @@ spec = do
       (payFor mempty $ unbuilt road) `shouldBe` Nothing
       let res4 = mempty { wool = 1, wheat = 1, ore = 1}
       (payFor res4 $ unbuilt devCard) `shouldBe` Just mempty
-      (payFor mempty $ unbuilt devCard) `shouldBe` Nothing      
+      (payFor mempty $ unbuilt devCard) `shouldBe` Nothing
+    it "can be checked to be all non-negative" $ property $
+      \res -> nonNegative (res :: ResourceCount) && not (nonNegative $ mkNeg res)
   describe "resourceFromTerrain" $ do
     it "gets the appropriate resource for a terrain type" $ do
       resourceFromTerrain Forest `shouldBe` mempty { lumber =  1 }

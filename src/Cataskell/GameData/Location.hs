@@ -9,6 +9,7 @@ module Cataskell.GameData.Location
 , VertexPosition(..)
 , Point(..)
 , mkCenter
+, hexCenterPoints
 , EdgeType(..)
 , UndirectedEdge(..)
 , dupleToEdge
@@ -60,6 +61,9 @@ data Point = Point
 
 mkCenter :: HexCoord -> Point
 mkCenter hexCoord = Point { coord = hexCoord, position = Center }
+
+hexCenterPoints :: [Point]
+hexCenterPoints = map mkCenter hexCoords
 
 data EdgeType 
   = ToCenter        -- ^ Edge linking intersection with center (don't display)

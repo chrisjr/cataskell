@@ -15,10 +15,10 @@ spec = do
       let c = unbuilt city
       let r = unbuilt road
       let d = unbuilt devCard
-      s `shouldBe` Building (Habitation Settlement Nothing)
-      c `shouldBe` Building (Habitation City Nothing)
-      r `shouldBe` Building (Road Nothing)
-      d `shouldBe` DevCard Nothing
+      s `shouldBe` Potential (HabitationToBe Settlement)
+      c `shouldBe` Potential (HabitationToBe City)
+      r `shouldBe` Potential (RoadToBe Road)
+      d `shouldBe` DevCard
     it "should have a point value" $ do
       let p = Point { coord = (0, 0), position = Top }
       let p' = Point { coord = (0, -1), position = Bottom }
