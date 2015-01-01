@@ -20,6 +20,7 @@ module Cataskell.GameData.Basics
 , devCard
 , isVictoryPoint
 , getBuilding
+, getActualItem
 , Terrain(..)
 , Color(..)
 , Colored(..)
@@ -124,6 +125,11 @@ getBuilding :: ActualItem -> Maybe ActualBuilding
 getBuilding x = case x of
   Building y -> Just y
   Card _ -> Nothing
+
+getActualItem :: Construct -> Maybe ActualItem
+getActualItem x = case x of 
+  Built y -> Just y
+  Unbuilt _ -> Nothing
 
 instance Valuable ActualItem where
   pointValue (Building (OnPoint (H Settlement _ _))) = 1

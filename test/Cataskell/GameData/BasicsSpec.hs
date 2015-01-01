@@ -24,13 +24,13 @@ spec = do
       let p' = Point { coord = (0, -1), position = Bottom }
       let c = Blue
       let e = UndirectedEdge p p'
-      (pointValue $ settlement (Just (p, c))) `shouldBe` 1
-      (pointValue $ settlement Nothing) `shouldBe` 0
-      (pointValue $ city (Just (p, c))) `shouldBe` 2
-      (pointValue $ city Nothing) `shouldBe` 0
-      (pointValue $ road (Just (e, c))) `shouldBe` 0
-      (pointValue $ devCard (Just VictoryPoint)) `shouldBe` 1
-      (pointValue $ devCard (Just Knight)) `shouldBe` 0
+      (fmap pointValue . getActualItem $ settlement (Just (p, c))) `shouldBe` Just 1
+      (fmap pointValue . getActualItem $ settlement Nothing) `shouldBe` Nothing
+      (fmap pointValue . getActualItem $ city (Just (p, c))) `shouldBe` Just 2
+      (fmap pointValue . getActualItem $ city Nothing) `shouldBe` Nothing
+      (fmap pointValue . getActualItem $ road (Just (e, c))) `shouldBe` Just 0
+      (fmap pointValue . getActualItem $ devCard (Just VictoryPoint)) `shouldBe` Just 1
+      (fmap pointValue . getActualItem $ devCard (Just Knight)) `shouldBe` Nothing
   describe "A Bonus" $ do
     it "should be worth 2 points" $ do
       pointValue LongestRoad `shouldBe` 2
