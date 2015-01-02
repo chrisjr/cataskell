@@ -26,6 +26,7 @@ import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (catMaybes)
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -78,11 +79,11 @@ checkHexNeighbors :: HexMap -> Bool
 checkHexNeighbors m
   = let countValuable = length . filter (\x -> x == 6 || x == 8)
         rollsMap = Map.map roll m
-        hn' = Map.map (map ((Map.!) rollsMap)) hexNeighborhoods
+        hn' = Map.map (catMaybes . map ((flip Map.lookup) rollsMap)) hexNeighborhoods
     in  all ((<= 1) . countValuable) $ Map.elems hn'
 
-newHexMap :: (RandomGen g) => Rand g HexMap
-newHexMap = do
+newHexMap' :: (RandomGen g) => Rand g HexMap
+newHexMap' = do
   terrains' <- shuffleM terrains
   rolls' <- shuffleM rolls
   desertLocation <- getRandomR (0, length terrains' - 1)
@@ -90,6 +91,12 @@ newHexMap = do
   let (start, end) = splitAt desertLocation hexList
   let hexList' = start ++ [desert] ++ end
   return $ hexMapFromList hexList'
+
+-- | Recursively generates until a valid one is found
+newHexMap :: (RandomGen g) => Rand g HexMap
+newHexMap = do
+  m <- newHexMap'
+  if checkHexNeighbors m then return m else newHexMap
 
 emptyBuildingMap :: BuildingMap
 emptyBuildingMap = undefined

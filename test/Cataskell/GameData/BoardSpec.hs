@@ -14,6 +14,7 @@ import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty)
 import Control.Monad.Random
+import Control.Applicative ((<$>))
 
 import Cataskell.GameData.LocationSpec()
 
@@ -30,7 +31,7 @@ instance Arbitrary HexMap where
   arbitrary = do
     seed <- arbitrary
     return $ evalRand newHexMap $ mkStdGen seed
-  shrink = map (Map.fromList) . shrinkList shrink . Map.toList
+  shrink m = Map.fromList <$> shrink (Map.toList m)
 
 instance Arbitrary Board where
   arbitrary = do
