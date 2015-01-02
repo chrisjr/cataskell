@@ -74,7 +74,7 @@ spec = do
         p2 `shouldSatisfy` (\p -> enoughFor p1complete asking p)
     describe "A CancelTrade" $ do
       it "should clear an extant trade offer from this player" $ do
-        pending
+        pendingWith "need GameState and update functions to test"
   describe "A Discard action" $ do
     it "should have a necessary amount to discard" $ do
       let dAction = DiscardAction { amountToDiscard = 4, resourcesDiscarding = mempty}

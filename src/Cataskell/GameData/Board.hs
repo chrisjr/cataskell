@@ -21,6 +21,8 @@ module Cataskell.GameData.Board
 , newBoard
 ) where
 
+
+import Cataskell.BoardGraph (allEdges)
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
@@ -39,8 +41,8 @@ data HexCenter = HexCenter
  } deriving (Eq, Ord, Show, Read,Generic)
 
 type HexMap = Map.Map Point HexCenter
-type RoadMap = Map.Map UndirectedEdge ActualRoad
-type BuildingMap = Map.Map Point ActualBuilding
+type RoadMap = Map.Map UndirectedEdge (Maybe ActualRoad)
+type BuildingMap = Map.Map Point (Maybe ActualBuilding)
 
 mkHexCenterUnsafe :: Terrain -> Int -> HexCenter
 mkHexCenterUnsafe t r = HexCenter { terrain = t
@@ -118,10 +120,14 @@ newHexMap = do
   return $ if checkHexNeighbors m then m else swapHighValued m
 
 emptyBuildingMap :: BuildingMap
-emptyBuildingMap = undefined
+emptyBuildingMap
+  = let validPoints = filter (\x -> position x == Top || position x == Bottom) allPoints
+    in Map.fromList $ zip validPoints (repeat Nothing)
 
 emptyRoadMap :: RoadMap
-emptyRoadMap = undefined
+emptyRoadMap
+  = let validEdges = allEdges
+    in Map.fromList $ zip validEdges (repeat Nothing)
 
 newBoard :: (RandomGen g) => Rand g Board
 newBoard = do

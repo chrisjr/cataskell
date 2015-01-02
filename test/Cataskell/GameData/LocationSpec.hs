@@ -44,7 +44,11 @@ spec = do
       mkCenter (0, 0) `shouldBe` Point { coord = (0,0), position = Center }
   describe "pointsAroundHex" $ do
     it "should generate 6 points surrounding a center" $ do
-      pending
+      let c = mkCenter (-1, 2)
+      let ps = [Point (-1,2) Top, Point (0,1) Bottom, 
+                Point (-1,3) Top, Point (-1,2) Bottom, 
+                Point (-2,3) Top, Point (-1,1) Bottom]
+      (sort $ pointsAroundHex (toCenter c)) `shouldBe` (sort ps)
   describe "mkHexPointsAndEdges" $ do
     it "should have the same points as center ++ pointsAroundHex" $ property $
       \c -> (fst $ mkHexPointsAndEdges (c :: CentralPoint)) == (fromCenter c):(pointsAroundHex c)

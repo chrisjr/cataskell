@@ -84,10 +84,15 @@ spec = do
         \hexMap -> let desertHex = head . filter ((== Desert) . terrain) $ Map.elems (hexMap :: HexMap)
                    in roll desertHex == 7
   describe "A BuildingMap" $ do
+    it "should have 54 keys" $ do
+      Map.size emptyBuildingMap `shouldBe` 54
     it "should start off empty" $ do
-      let e = emptyBuildingMap
-      True `shouldBe` True
-      -- all () $ map Map. `shouldBe`
+      Map.elems emptyBuildingMap `shouldSatisfy` (all (== Nothing))
+  describe "A RoadMap" $ do
+    it "should have 72 keys" $ do
+      Map.size emptyRoadMap `shouldBe` 72
+    it "should start off empty" $ do
+      Map.elems emptyRoadMap `shouldSatisfy` (all (== Nothing))
 
   describe "A Board" $ do
     it "should start off with no buildings and no roads" $ property $

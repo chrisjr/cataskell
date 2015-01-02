@@ -101,8 +101,11 @@ centerConnections = connections (== BetweenCenters)
 resourceConnections :: BoardGraph
 resourceConnections = connections (== ToCenter)
 
-buildingConnections :: BoardGraph
-buildingConnections = connections (== Between)
+roadConnections :: BoardGraph
+roadConnections = connections (== Between)
+
+allEdges :: [UndirectedEdge]
+allEdges = map (\(_, _, x) -> x) $ labEdges roadConnections
 
 boardPrint :: BoardGraph -> IO ()
 boardPrint = prettyPrint
