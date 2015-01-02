@@ -1,9 +1,16 @@
 module Cataskell.GameData.LocationSpec (main, spec) where
 
 import Test.Hspec
+import Test.QuickCheck
 import Data.List (sort)
 import Cataskell.GameData.Location
 import qualified Data.Map.Strict as Map
+
+instance Arbitrary Point where
+  arbitrary = elements allPoints
+
+instance Arbitrary CentralPoint where
+  arbitrary = toCenter `fmap` elements hexCenterPoints
 
 main :: IO ()
 main = hspec spec
@@ -35,6 +42,12 @@ spec = do
       position p `shouldBe` Top
     it "can be made from a hex coordinate" $ do
       mkCenter (0, 0) `shouldBe` Point { coord = (0,0), position = Center }
+  describe "pointsAroundHex" $ do
+    it "should generate 6 points surrounding a center" $ do
+      pending
+  describe "mkHexPointsAndEdges" $ do
+    it "should have the same points as center ++ pointsAroundHex" $ property $
+      \c -> (fst $ mkHexPointsAndEdges (c :: CentralPoint)) == (fromCenter c):(pointsAroundHex c)
   describe "An UndirectedEdge" $ do
     let p1 = Point { coord = (0,0), position = Top }
     let p2 = Point { coord = (0,0), position = Top }

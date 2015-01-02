@@ -6,15 +6,13 @@ import Data.Graph.Inductive
 import Data.Graph.Inductive.PatriciaTree()
 import Data.Maybe (listToMaybe, fromJust)
 import Control.Applicative ((<$>))
-import Cataskell.Util
 import qualified Data.Map.Strict as Map
-import Cataskell.GameData.Location ( HexCoord
-                                   , hexCoords
+import Cataskell.GameData.Location ( hexCenterPoints
                                    , hexNeighborhoods
-                                   , hexCenterPoints
-                                   , VertexPosition(..)
+                                   , mkHexPointsAndEdges
+                                   , toCenter
+                                   , CentralPoint(..)
                                    , Point(..)
-                                   , mkCenter
                                    , UndirectedEdge(..)
                                    , EdgeType(..)
                                    , edgeType
@@ -23,17 +21,6 @@ import Cataskell.GameData.Location ( HexCoord
 
 type BoardGraph = Gr Point UndirectedEdge
 type BoardNodeContext = Context Point UndirectedEdge
-
--- | Vertices around the edge of a given hex.
-pointsAroundHex :: HexCoord -> [Point]
-pointsAroundHex hexCoord
-  = let p1 = Point { coord = hexCoord, position = Top }
-        p2 = Point { coord = hexCoord + (1, -1), position = Bottom }
-        p3 = Point { coord = hexCoord + (0, 1), position = Top }
-        p4 = Point { coord = hexCoord, position = Bottom }    
-        p5 = Point { coord = hexCoord + (-1, 1), position = Top }
-        p6 = Point { coord = hexCoord + (0, -1), position = Bottom }  
-    in  [p1, p2, p3, p4, p5, p6]
 
 -- | Find adjacents and the node itself
 getContextByLabel :: Point -> BoardGraph -> Maybe BoardNodeContext
@@ -63,7 +50,6 @@ insNodesOnce ps gr
            let (newgr, added) = insNodeOnce point gr'
            in (newgr, nodes' ++ [added])) (gr, []) ps
 
-
 -- | Insert an edge iff it doesn't yet exist in the graph.
 insEdgeOnce :: UndirectedEdge -> BoardGraph -> BoardGraph
 insEdgeOnce uEdge gr 
@@ -78,21 +64,10 @@ insEdgesOnce :: [UndirectedEdge] -> BoardGraph -> BoardGraph
 insEdgesOnce uEdges gr
  = foldl (\acc x -> insEdgeOnce x acc) gr uEdges
 
-mkHexGraph :: HexCoord -> ([Point], [UndirectedEdge])
-mkHexGraph hexCoord
-  = let center = mkCenter hexCoord
-        edgePoints = pointsAroundHex hexCoord
-        allPoints = center:edgePoints
-        toCenters = map dupleToEdge $ zip (repeat center) edgePoints
-        loop = windowed 2 (edgePoints ++ [head edgePoints])
-        loop' = map (dupleToEdge . fromJust . listToDuple) loop
-        allEdges = loop' ++ toCenters
-    in (allPoints, allEdges)
-
 -- | Add a hex to the graph at specified coordinate, reusing vertices if possible.
-addHex :: HexCoord -> BoardGraph -> BoardGraph
-addHex hexCoord gr
-  = let (points, uEdges) = mkHexGraph hexCoord
+addHex :: BoardGraph -> CentralPoint -> BoardGraph
+addHex gr centerPoint
+  = let (points, uEdges) = mkHexPointsAndEdges centerPoint
         (nodeGr, _) = insNodesOnce points gr
         gr' = insEdgesOnce uEdges nodeGr
     in  undir gr'
@@ -105,7 +80,7 @@ connectCenters = insEdgesOnce centerEdges
 -- | The Catan board as a graph. Occupancy data is stored in a map (see Cataskell.GameData.Board)
 boardGraph :: BoardGraph
 boardGraph = undir $ connectCenters gr
-             where gr = foldl (flip addHex) empty hexCoords
+             where gr = foldl (addHex) empty $ map toCenter hexCenterPoints
 
 -- | Count the nodes that satisfy a predicate.
 countNodes :: (Point -> Bool) -> BoardGraph -> Int

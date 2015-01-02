@@ -19,7 +19,7 @@ spec = do
   let isIntersection x = isPos Top x || isPos Bottom x
   
   describe "A hex graph" $ do
-    let hex = addHex (0,0) empty
+    let hex = addHex empty . toCenter $ mkCenter (0,0)
     it "has 7 vertices total" $ do
       countNodes (\_ -> True) hex `shouldBe` (7 :: Int)
     it "has 6 outer vertices" $ do
@@ -52,7 +52,7 @@ spec = do
     it "should return the top/bottom neighbors of a specified point" $ do
       let hC = (0, 0)
       let p = Point hC Center
-      let pNeighbors = tail . fst $ mkHexGraph hC
+      let pNeighbors = tail . fst . mkHexPointsAndEdges $ toCenter p
       (sort . filter isIntersection $ neighborPoints boardGraph p) `shouldBe` sort pNeighbors
     it "should be linked between centers" $ do
       let centers = map mkCenter hexCoords

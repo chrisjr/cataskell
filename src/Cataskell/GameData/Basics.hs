@@ -32,11 +32,11 @@ import GHC.Generics (Generic)
 
 -- | Possible colors of player tokens
 data Color = Red | Blue | Orange | White
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 -- | Different terrains produce different resources
 data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 -- | Class of items with point value
 class Valuable a where
@@ -48,44 +48,44 @@ class Colored a where
 
 -- | Types of buildings that live on points
 data Inhabited = Settlement | City
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data Road = Road
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 -- | Types of placeable items by players (if placed, must also have a player color)
 data PotentialBuilding
   = HabitationToBe Inhabited
   | RoadToBe Road
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 -- | Development cards for special actions
 data DevelopmentCard = Knight | RoadBuilding | Invention | Monopoly | VictoryPoint
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data PotentialItem = Potential PotentialBuilding | DevCard
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data ActualHabitation = H Inhabited Point Color
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data ActualRoad = R Road UndirectedEdge Color
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data ActualBuilding
   = OnPoint ActualHabitation
   | OnEdge ActualRoad
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data ActualItem
   = Building ActualBuilding
   | Card DevelopmentCard
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data Construct
   = Built ActualItem
   | Unbuilt PotentialItem
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 instance Colored ActualBuilding where
   color (OnPoint (H _ _ c)) = c
@@ -139,7 +139,7 @@ instance Valuable ActualItem where
 
 -- | Bonuses conferred when achieving longest road/largest army
 data Bonus = LongestRoad | LargestArmy
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 instance Valuable Bonus where
   pointValue _ = 2

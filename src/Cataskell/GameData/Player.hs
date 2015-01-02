@@ -24,7 +24,7 @@ data Player = Player
   , resources :: ResourceCount
   , constructed :: [ActualItem]
   , bonuses :: [Bonus]
-  } deriving (Eq, Show, Ord, Generic)
+  } deriving (Eq, Show, Read,Ord, Generic)
 
 instance Colored Player where
   color = playerColor

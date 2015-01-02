@@ -15,13 +15,22 @@ import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty)
 import Control.Monad.Random
 
+import Cataskell.GameData.LocationSpec()
+
 instance NFData Terrain
 instance NFData HexCenter
+
+instance Arbitrary HexCenter where
+  arbitrary = do
+    terrain' <- elements (Desert:terrains)
+    roll' <- if terrain' == Desert then elements [7] else elements rolls
+    return $ mkHexCenter terrain' roll' 
 
 instance Arbitrary HexMap where
   arbitrary = do
     seed <- arbitrary
     return $ evalRand newHexMap $ mkStdGen seed
+  shrink = map (Map.fromList) . shrinkList shrink . Map.toList
 
 instance Arbitrary Board where
   arbitrary = do
@@ -67,7 +76,7 @@ spec = do
                  in h && p && m && fi && fo && d
 
     it "should have no high-value terrains (6 or 8) next to each other" $ property $
-      \hexMap -> checkNeighbors hexMap == True
+      \hexMap -> checkHexNeighbors hexMap == True
 
     describe "the Desert" $ do
       it "should have roll equal to 7" $ property $

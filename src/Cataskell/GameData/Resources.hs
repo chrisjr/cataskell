@@ -13,7 +13,7 @@ data ResourceCount = ResourceCount
   , wheat :: Int
   , brick :: Int
   , ore :: Int
-  } deriving (Eq, Ord, Show, Generic)
+  } deriving (Eq, Ord, Show, Read,Generic)
 
 instance FromJSON ResourceCount
 instance ToJSON ResourceCount

@@ -11,7 +11,9 @@ module Cataskell.GameData.Board
 , hasRobber
 , mkHexCenter
 , hexMapFromList
-, checkNeighbors
+, terrains
+, rolls
+, checkHexNeighbors
 , Board(..)
 , newHexMap
 , emptyBuildingMap
@@ -33,7 +35,7 @@ data HexCenter = HexCenter
  , resource :: ResourceCount
  , roll :: Int
  , hasRobber :: Bool
- } deriving (Eq, Ord, Show, Generic)
+ } deriving (Eq, Ord, Show, Read,Generic)
 
 type HexMap = Map.Map Point HexCenter
 type RoadMap = Map.Map UndirectedEdge ActualRoad
@@ -59,7 +61,7 @@ data Board = Board
   { hexes :: HexMap
   , roads :: RoadMap
   , buildings :: BuildingMap
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Read,Generic)
 
 terrains :: [Terrain]
 terrains = hills ++ pastures ++ mountains ++ fields ++ forests
@@ -72,11 +74,12 @@ terrains = hills ++ pastures ++ mountains ++ fields ++ forests
 rolls :: [Int]
 rolls = [2, 12] ++ [3..6] ++ [3..6] ++ [8..11] ++ [8..11]
 
-checkNeighbors :: HexMap -> Bool
-checkNeighbors m
-  = let countValuable = undefined
-        hn = hexNeighborhoods
-    in  all ((<= 1) . countValuable) . Map.toList $ Map.map terrain m
+checkHexNeighbors :: HexMap -> Bool
+checkHexNeighbors m
+  = let countValuable = length . filter (\x -> x == 6 || x == 8)
+        rollsMap = Map.map roll m
+        hn' = Map.map (map ((Map.!) rollsMap)) hexNeighborhoods
+    in  all ((<= 1) . countValuable) $ Map.elems hn'
 
 newHexMap :: (RandomGen g) => Rand g HexMap
 newHexMap = do

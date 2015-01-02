@@ -6,12 +6,12 @@ import Cataskell.GameData.Board
 import GHC.Generics (Generic)
 
 data Phase = NotStarted | Initial | Normal | End
-  deriving (Eq, Show, Ord, Generic)
+  deriving (Eq, Show, Read,Ord, Generic)
 
 data GameState = GameState
   { board :: Board
   , phase :: Phase
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Read,Generic)
 
 newGame :: (RandomGen g) => Rand g GameState
 newGame = undefined

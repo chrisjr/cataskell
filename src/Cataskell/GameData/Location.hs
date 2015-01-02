@@ -8,16 +8,23 @@ module Cataskell.GameData.Location
 , hexNeighborhoods
 , VertexPosition(..)
 , Point(..)
+, CentralPoint(..)
+, toCenter
+, fromCenter
 , mkCenter
 , hexCenterPoints
+, pointsAroundHex
+, allPoints
+, mkHexPointsAndEdges
 , EdgeType(..)
 , UndirectedEdge(..)
 , dupleToEdge
 , edgeType
 ) where
 
-import Cataskell.Util()
-import Data.List (delete)
+import Cataskell.Util
+import Data.List (delete, nub)
+import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import GHC.Generics (Generic)
 
@@ -51,13 +58,23 @@ data VertexPosition
   = Top     -- ^ Top of a hex
   | Bottom  -- ^ Bottom of a hex
   | Center  -- ^ Center (location of chits/robber)
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 -- | Describes a board location
 data Point = Point
   { coord :: HexCoord
   , position :: VertexPosition
-  } deriving (Eq, Ord, Show, Generic)
+  } deriving (Eq, Ord, Show, Read,Generic)
+
+newtype CentralPoint = Central Point
+ deriving ( Eq, Ord, Show, Read )
+
+toCenter :: Point -> CentralPoint
+toCenter x | position x == Center = Central x
+           | otherwise = error "Point is not a center"
+
+fromCenter :: CentralPoint -> Point
+fromCenter (Central p) = p
 
 mkCenter :: HexCoord -> Point
 mkCenter hexCoord = Point { coord = hexCoord, position = Center }
@@ -65,16 +82,41 @@ mkCenter hexCoord = Point { coord = hexCoord, position = Center }
 hexCenterPoints :: [Point]
 hexCenterPoints = map mkCenter hexCoords
 
+-- | Vertices around the edge of a given hex.
+pointsAroundHex :: CentralPoint -> [Point]
+pointsAroundHex centerPoint
+  = let hexCoord = coord $ fromCenter centerPoint
+        p1 = Point { coord = hexCoord, position = Top }
+        p2 = Point { coord = hexCoord + (1, -1), position = Bottom }
+        p3 = Point { coord = hexCoord + (0, 1), position = Top }
+        p4 = Point { coord = hexCoord, position = Bottom }    
+        p5 = Point { coord = hexCoord + (-1, 1), position = Top }
+        p6 = Point { coord = hexCoord + (0, -1), position = Bottom }  
+    in  [p1, p2, p3, p4, p5, p6]
+
+allPoints :: [Point]
+allPoints = nub (hexCenterPoints ++ concatMap (pointsAroundHex . toCenter) hexCenterPoints)
+
+mkHexPointsAndEdges :: CentralPoint -> ([Point], [UndirectedEdge])
+mkHexPointsAndEdges centerPoint
+  = let edgePoints = pointsAroundHex centerPoint
+        localPoints = (fromCenter centerPoint):edgePoints
+        toCenters = map dupleToEdge $ zip (repeat $ fromCenter centerPoint) edgePoints
+        loop = windowed 2 (edgePoints ++ [head edgePoints])
+        loop' = map (dupleToEdge . fromJust . listToDuple) loop
+        localEdges = loop' ++ toCenters
+    in (localPoints, localEdges)
+
 data EdgeType 
   = ToCenter        -- ^ Edge linking intersection with center (don't display)
   | BetweenCenters  -- ^ Between two centers (don't display)
   | Between         -- ^ Between two intersections
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read,Generic)
 
 data UndirectedEdge = UndirectedEdge
   { point1 :: Point
   , point2 :: Point
-  } deriving (Ord, Show, Generic)
+  } deriving (Ord, Show, Read,Generic)
 
 instance Eq UndirectedEdge where
   x == y = (point1 x == point1 y && point2 x == point2 y) || (point1 x == point2 y && point2 x == point1 y) 
