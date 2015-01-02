@@ -24,6 +24,8 @@ spec = do
   describe "A ResourceCount" $ do
     it "should start empty" $ do
       totalResources mempty `shouldBe` (0 :: Int)
+    it "can be multiplied by a scalar" $ property $
+      \x i -> totalResources (mulResources (x :: ResourceCount) (i :: Int)) == i * totalResources x
     it "should be invertible" $ property $
       \x -> (x <> mkNeg x) == (mempty :: ResourceCount)
     it "can be checked against costs (ex. 1)" $ do

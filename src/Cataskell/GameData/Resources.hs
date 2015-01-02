@@ -31,14 +31,17 @@ instance Monoid ResourceCount where
 totalResources :: ResourceCount -> Int
 totalResources r = lumber r + wool r + wheat r + brick r + ore r
 
-mkNeg :: ResourceCount -> ResourceCount
-mkNeg r = ResourceCount
-  { lumber = -lumber r
-  , wool = -wool r
-  , wheat = -wheat r
-  , brick = -brick r
-  , ore = -ore r
+mulResources :: ResourceCount -> Int -> ResourceCount
+mulResources r i = ResourceCount
+  { lumber = i * lumber r
+  , wool = i * wool r
+  , wheat = i * wheat r
+  , brick = i * brick r
+  , ore = i * ore r
   }
+
+mkNeg :: ResourceCount -> ResourceCount
+mkNeg r = mulResources r (-1)
 
 sufficient :: ResourceCount -> ResourceCount -> Bool
 sufficient r c = and [lumber', wool', wheat', brick', ore']
