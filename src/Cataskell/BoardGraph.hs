@@ -11,6 +11,7 @@ import qualified Data.Map.Strict as Map
 import Cataskell.GameData.Location ( HexCoord
                                    , hexCoords
                                    , hexNeighborhoods
+                                   , hexCenterPoints
                                    , VertexPosition(..)
                                    , Point(..)
                                    , mkCenter
@@ -98,15 +99,13 @@ addHex hexCoord gr
 
 connectCenters :: BoardGraph -> BoardGraph
 connectCenters = insEdgesOnce centerEdges
-  where centerEdges = concatMap (\x -> map dupleToEdge . (zip (repeat $ mkCenter x)) $ getNs x) hexCoords
-        getNs = map mkCenter . (Map.!) hexNeighborhoods
+  where centerEdges = concatMap (\x -> map dupleToEdge . (zip (repeat x)) $ getNs x) hexCenterPoints
+        getNs = (Map.!) hexNeighborhoods
 
 -- | The Catan board as a graph. Occupancy data is stored in a map (see Cataskell.GameData.Board)
 boardGraph :: BoardGraph
 boardGraph = undir $ connectCenters gr
-             where gr = foldl (flip addHex) start hexCoords
-                   start = fst $ insNodesOnce initialPoints empty
-                   initialPoints = map mkCenter hexCoords
+             where gr = foldl (flip addHex) empty hexCoords
 
 -- | Count the nodes that satisfy a predicate.
 countNodes :: (Point -> Bool) -> BoardGraph -> Int

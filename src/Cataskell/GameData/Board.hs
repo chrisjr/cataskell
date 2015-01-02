@@ -73,7 +73,10 @@ rolls :: [Int]
 rolls = [2, 12] ++ [3..6] ++ [3..6] ++ [8..11] ++ [8..11]
 
 checkNeighbors :: HexMap -> Bool
-checkNeighbors = undefined
+checkNeighbors m
+  = let countValuable = undefined
+        hn = hexNeighborhoods
+    in  all ((<= 1) . countValuable) . Map.toList $ Map.map terrain m
 
 newHexMap :: (RandomGen g) => Rand g HexMap
 newHexMap = do

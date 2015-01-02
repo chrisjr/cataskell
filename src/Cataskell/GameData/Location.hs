@@ -40,10 +40,10 @@ neighborCoords c
   = let lst = [ (x,y) + c | y <- [-1..1], x <- [-1..1], (withinHexRadius 1 c) $ (x, y) + c]
     in  filter (\x -> x /= c && x `elem` hexCoords) lst
 
-hexNeighborhoods :: Map.Map HexCoord [HexCoord]
+hexNeighborhoods :: Map.Map Point [Point]
 hexNeighborhoods = Map.fromList hexN
-  where hexN = zip hexCoords nns
-        nns = map getNs hexCoords
+  where hexN = zip hexCenterPoints nns
+        nns = map (map mkCenter) $ map getNs hexCoords
         getNs hc = let nc = neighborCoords hc
                    in  delete hc nc
 

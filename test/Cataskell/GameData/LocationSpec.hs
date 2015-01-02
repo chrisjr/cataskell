@@ -27,7 +27,7 @@ spec = do
       Map.size h `shouldBe` 19
       let neighborhoodSizes = map snd . Map.toList $ Map.map length h
       all (\x -> x == 3 || x == 4 || x == 6) neighborhoodSizes `shouldBe` True
-      (length $ (Map.!) h (-2, 0)) `shouldBe` 3
+      (length $ (Map.!) h (mkCenter (-2, 0))) `shouldBe` 3
   describe "A Point" $ do
     it "has a hex coordinate and position" $ do
       let p = Point { coord = (0,0), position = Top }
