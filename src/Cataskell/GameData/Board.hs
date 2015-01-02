@@ -75,12 +75,19 @@ terrains = hills ++ pastures ++ mountains ++ fields ++ forests
 rolls :: [Int]
 rolls = [2, 12] ++ [3..6] ++ [3..6] ++ [8..11] ++ [8..11]
 
-checkHexNeighbors :: HexMap -> Bool
-checkHexNeighbors m
-  = let countValuable = length . filter (\x -> x == 6 || x == 8)
+problemNeighborhoods :: HexMap -> ([Point], [Point])
+problemNeighborhoods m
+  = let highValued x = x == 6 || x == 8
+        pointAndNeighborValued (p, ns) = highValued ((Map.!) rollsMap p) && any highValued ns
+        lowValued (p, ns) = not ((highValued ((Map.!) rollsMap p)) || any highValued ns)
         rollsMap = Map.map roll m
         hn' = Map.map (catMaybes . map ((flip Map.lookup) rollsMap)) hexNeighborhoods
-    in  all ((<= 1) . countValuable) $ Map.elems hn'
+        lst = Map.toList hn'
+    in  (map fst (filter pointAndNeighborValued lst), map fst (filter lowValued lst))
+
+checkHexNeighbors :: HexMap -> Bool
+checkHexNeighbors m
+  = length (fst $ problemNeighborhoods m) == 0
 
 newHexMap' :: (RandomGen g) => Rand g HexMap
 newHexMap' = do
@@ -92,11 +99,23 @@ newHexMap' = do
   let hexList' = start ++ [desert] ++ end
   return $ hexMapFromList hexList'
 
--- | Recursively generates until a valid one is found
+-- | If checkHexNeighbors fails, then swap one high-valued
+swapHighValued :: HexMap -> HexMap
+swapHighValued hexMap
+  = let doSwap k1 k2 m = let v1 = (Map.!) m k1
+                             v2 = (Map.!) m k2
+                         in  Map.insert k2 v1 $ Map.insert k1 v2 m
+        (tooHigh, tooLow) = problemNeighborhoods hexMap
+        m' = if (length tooHigh == 0)
+             then hexMap
+             else doSwap (head tooHigh) (head tooLow) hexMap
+    in  if (length tooHigh == 0) then m' else swapHighValued m'
+
+-- | Recursively generates hexmaps until a valid one is found
 newHexMap :: (RandomGen g) => Rand g HexMap
 newHexMap = do
   m <- newHexMap'
-  if checkHexNeighbors m then return m else newHexMap
+  return $ if checkHexNeighbors m then m else swapHighValued m
 
 emptyBuildingMap :: BuildingMap
 emptyBuildingMap = undefined

@@ -65,7 +65,6 @@ spec = do
                      d = (all (== 2) $ map ((Map.!) rollCounts) [3..6])
                      e = (all (== 2) $ map ((Map.!) rollCounts) [8..11])
                  in  a && b && c && d && e
-
     it "should have 3 hills, 4 pastures, 3 mountains, 4 fields, 4 forests, and 1 desert" $ property $
       \hexMap -> let terrains = group . sort . map terrain $ Map.elems (hexMap :: HexMap)
                      terrainCounts = Map.fromList $ zip (map head terrains) (map length terrains)
