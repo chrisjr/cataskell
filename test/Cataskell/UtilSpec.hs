@@ -22,8 +22,8 @@ spec = do
       in  prop'
   describe "windowed" $ do
     it "should make windows of equal size" $ property $
-      \i lst -> let w = windowed (i :: Int) (lst :: [Int])
-                in (length w >= 1) && (all (== i) $ map length w)
+      let prop' (NonNegative i) lst = all (== i) . map length $ windowed i (lst :: [Int])
+      in prop'
   describe "listToDuple" $ do
     it "should turn a list of two elements into a duple" $ do
       listToDuple [1, 2] `shouldBe` Just (1, 2)

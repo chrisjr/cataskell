@@ -19,18 +19,25 @@ spec = do
       c `shouldBe` Potential (HabitationToBe City)
       r `shouldBe` Potential (RoadToBe Road)
       d `shouldBe` DevCard
-    it "should have a point value" $ do
-      let p = Point { coord = (0, 0), position = Top }
-      let p' = Point { coord = (0, -1), position = Bottom }
-      let c = Blue
-      let e = UndirectedEdge p p'
-      (fmap pointValue . getActualItem $ settlement (Just (p, c))) `shouldBe` Just 1
-      (fmap pointValue . getActualItem $ settlement Nothing) `shouldBe` Nothing
-      (fmap pointValue . getActualItem $ city (Just (p, c))) `shouldBe` Just 2
-      (fmap pointValue . getActualItem $ city Nothing) `shouldBe` Nothing
-      (fmap pointValue . getActualItem $ road (Just (e, c))) `shouldBe` Just 0
-      (fmap pointValue . getActualItem $ devCard (Just VictoryPoint)) `shouldBe` Just 1
-      (fmap pointValue . getActualItem $ devCard (Just Knight)) `shouldBe` Nothing
+    let p = Point { coord = (0, 0), position = Top }
+    let p' = Point { coord = (0, -1), position = Bottom }
+    let c = Blue
+    let e = UndirectedEdge p p'
+    describe "has an optional point value" $ do
+      it "is Just 1 for a built settlement" $ do
+        (fmap pointValue . getActualItem $ settlement (Just (p, c))) `shouldBe` Just 1
+      it "is Nothing for an unbuilt settlement" $ do
+        (fmap pointValue . getActualItem $ settlement Nothing) `shouldBe` Nothing
+      it "is 2 for a built city" $ do
+        (fmap pointValue . getActualItem $ city (Just (p, c))) `shouldBe` Just 2
+      it "is Nothing for an unbuilt city" $ do
+        (fmap pointValue . getActualItem $ city Nothing) `shouldBe` Nothing
+      it "is 0 for a built road" $ do
+        (fmap pointValue . getActualItem $ road (Just (e, c))) `shouldBe` Just 0
+      it "is 1 for a built victory card" $ do
+        (fmap pointValue . getActualItem $ devCard (Just VictoryPoint)) `shouldBe` Just 1
+      it "is 0 for a built development card of another kind" $ do
+        (fmap pointValue . getActualItem $ devCard (Just Knight)) `shouldBe` Just 0
   describe "A Bonus" $ do
     it "should be worth 2 points" $ do
       pointValue LongestRoad `shouldBe` 2
