@@ -62,7 +62,7 @@ data Board = Board
   { hexes :: HexMap
   , roads :: RoadMap
   , buildings :: BuildingMap
-  } deriving (Eq, Show, Read,Generic)
+  } deriving (Eq, Ord, Show, Read,Generic)
 
 terrains :: [Terrain]
 terrains = hills ++ pastures ++ mountains ++ fields ++ forests

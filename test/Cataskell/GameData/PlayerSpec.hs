@@ -10,8 +10,12 @@ import Cataskell.GameData.Resources
 import Cataskell.GameData.ResourcesSpec() -- get Arbitrary ResourceCount 
 
 instance Arbitrary Player where
-  arbitrary = undefined
-
+  arbitrary = do
+    name <- elements ["1", "2", "3", "4"]
+    color <- elements [Red, Blue, Orange, White]
+    let p = mkPlayer (color, name)
+    r <- arbitrary
+    return $ p { resources = r }
 
 main :: IO ()
 main = hspec spec
@@ -19,19 +23,23 @@ main = hspec spec
 spec :: Spec
 spec = do
   describe "A Player" $ do
-    let p = mkPlayer Blue
+    let p = mkPlayer (Blue, "Nobody")
+    it "has a name" $ do
+      playerName p `shouldBe` "Nobody"
     it "should begin with 0 resources" $ do
       (totalResources $ resources p) `shouldBe` 0
-    it "can add resources" $ do
-      let p' = p { resources = mempty { ore = 1 }}
-      (totalResources $ resources p') `shouldBe` 1
-
-    let p2 = (mkPlayer White) {
+    it "can add resources" $ property $
+      \p -> let resCountNow = totalResources $ resources (p :: Player)
+                oneOre = mempty { ore = 1 }
+                resAfter = (resources p) <> oneOre
+                resCountAfter = totalResources resAfter
+            in (resCountNow + 1) == resCountAfter
+ 
+    let p2 = (mkPlayer (White, "No-One")) {
         constructed = [ Card VictoryPoint
                       , Building (OnPoint (H Settlement undefined White))
                       , Building (OnPoint (H Settlement undefined White))]
       }
-
     it "should have a score" $ do
       score p2 `shouldBe` 3
     it "should have a display score" $ do

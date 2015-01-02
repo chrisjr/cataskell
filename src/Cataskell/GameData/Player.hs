@@ -2,11 +2,12 @@
 
 module Cataskell.GameData.Player
 ( Player
-, color
+, playerName
 , resources
 , constructed
 , bonuses
 , mkPlayer
+, mkPlayers
 , validPlayer
 , displayScore
 , score
@@ -20,7 +21,8 @@ import Data.Maybe
 import GHC.Generics (Generic)
 
 data Player = Player
-  { playerColor :: Color
+  { playerName :: String
+  , playerColor :: Color
   , resources :: ResourceCount
   , constructed :: [ActualItem]
   , bonuses :: [Bonus]
@@ -29,13 +31,17 @@ data Player = Player
 instance Colored Player where
   color = playerColor
 
-mkPlayer :: Color -> Player
-mkPlayer c = Player
-  { playerColor = c
+mkPlayer :: (Color, String) -> Player
+mkPlayer (c, n) = Player
+  { playerName = n
+  , playerColor = c
   , resources = mempty
   , constructed = []
   , bonuses = []
   }
+
+mkPlayers :: [String] -> [Player]
+mkPlayers = map mkPlayer . zip [Red, Blue, Orange, White]
 
 validPlayer :: Player -> Bool
 validPlayer p
