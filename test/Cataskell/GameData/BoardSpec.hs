@@ -50,7 +50,8 @@ spec = do
       terrain (mkHexCenter Desert 7) `shouldBe` Desert
       (evaluate . force) (mkHexCenter Desert 5) `shouldThrow` (const True :: Selector AssertionFailed)
       (evaluate . force) (mkHexCenter Mountain 7) `shouldThrow` (const True :: Selector AssertionFailed)
-
+    it "can be generated satisfying this requirement" $ property $
+      \hc -> (terrain (hc :: HexCenter) == Desert) == (roll hc == 7)
   describe "A HexMap" $ do
     it "should create a randomly generated set of terrains and rolls" $ property $
       \hexMap -> (Map.size (hexMap :: HexMap)) == 19
