@@ -42,11 +42,11 @@ data PlayerAction = PlayerAction
   , action :: Action
   } deriving (Eq, Ord, Show, Read, Generic)
 
-getTrade :: PlayerAction -> Maybe TradeAction
+getTrade :: PlayerAction -> TradeAction
 getTrade (PlayerAction _ act)
   = case act of
-      Trade x -> Just x
-      _ -> Nothing
+      Trade x -> x
+      _ -> error "Is not a trade!"
 
 getOffer :: TradeAction -> TradeOffer
 getOffer x
@@ -56,6 +56,19 @@ getOffer x
       Reject o _ _ -> o
       CompleteTrade o _ -> o
       CancelTrade o -> o
+
+enoughFor :: PlayerAction -> (TradeOffer -> ResourceCount) -> Player -> Bool
+enoughFor act f p
+  = let tr = getTrade act
+        offer' = getOffer tr
+        amt = f offer'
+    in sufficient (resources p) amt
+
+mkOffer :: TradeOffer -> Player -> PlayerAction
+mkOffer offer' p
+  = PlayerAction
+      { actor = p
+      , action = Trade (Offer offer') }
 
 accept :: PlayerAction -> Player -> PlayerAction
 accept (PlayerAction original act) accepter'

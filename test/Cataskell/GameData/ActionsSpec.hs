@@ -36,7 +36,7 @@ spec = do
     let oneOre = (mempty { ore = 1 }) :: ResourceCount
     let offer' = TradeOffer { offering = oneWheat, asking = oneOre }
     let p1 = (mkPlayer (Blue, "NoOne")) { resources = mempty { wheat = 2, ore = 2 } }
-    let p1offer = PlayerAction { actor = p1, action = Trade (Offer offer') }
+    let p1offer = mkOffer offer' p1
     let p2 = (mkPlayer (White, "Nobody")) { resources = mempty { ore = 3 } }
     let p3 = mkPlayer (Orange, "Nadie")
 
@@ -44,40 +44,34 @@ spec = do
       it "should have an offering and asking amount" $ do
         offering offer' `shouldBe` oneWheat
         asking offer' `shouldBe` oneOre
-      it "should be checked against the resources of the player" $ do
-        p1 `shouldSatisfy` (\p -> sufficient (resources p) (offering offer'))
+      it "can be checked against the resources of the player" $ do
+        p1 `shouldSatisfy` (\p -> enoughFor p1offer offering p)
 
     let p2accept = accept p1offer p2
     describe "An Accept" $ do
       it "should contain the accepter, the original offer and the asker" $ do
         actor p2accept `shouldBe` p2
         let tr = getTrade p2accept
-        offer `fmap` tr `shouldBe` Just offer'
-        asker `fmap` tr `shouldBe` Just p1
-      it "should be checked against the resources of the player" $ do
-        p2 `shouldSatisfy` (\p -> sufficient (resources p) (asking offer'))
+        offer tr `shouldBe` offer'
+        asker tr `shouldBe` p1
+      it "can be checked against the resources of the player" $ do
+        p2 `shouldSatisfy` (\p -> enoughFor p2accept asking p)
 
     let p3reject = reject p1offer p3 (Just "nope")
     describe "A Reject" $ do
       it "should contain the rejecter, original offer and asker" $ do
         actor p3reject `shouldBe` p3
         let tr = getTrade p3reject
-        offer `fmap` tr `shouldBe` Just offer'
-        asker `fmap` tr `shouldBe` Just p1
+        offer tr `shouldBe` offer'
+        asker tr `shouldBe` p1
       it "may contain a reason for rejection" $ do
-        reason `fmap` (getTrade p3reject) `shouldBe` (Just (Just "nope"))
+        reason (getTrade p3reject) `shouldBe` (Just "nope")
 
     let p1complete = complete p1offer p2accept
     describe "A CompleteTrade" $ do
-      it "should be checked against the resources of both players" $ do
-        let tr = getTrade p1offer
-        let offerWas = getOffer $ fromJust tr
-        let offeringWas = offering offerWas
-        let askingWas = asking offerWas
-        p1 `shouldSatisfy` (\p -> sufficient (resources p) offeringWas)
-        p2 `shouldSatisfy` (\p -> sufficient (resources p) askingWas)
-      it "should execute the change of resources" $ do
-        pending
+      it "can be checked against the resources of both players" $ do
+        p1 `shouldSatisfy` (\p -> enoughFor p1complete offering p)
+        p2 `shouldSatisfy` (\p -> enoughFor p1complete asking p)
     describe "A CancelTrade" $ do
       it "should clear an extant trade offer from this player" $ do
         pending
