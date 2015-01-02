@@ -33,7 +33,7 @@ data DiscardAction = DiscardAction
   , resourcesDiscarding :: ResourceCount
   } deriving (Eq, Show, Ord, Generic)
 
-data Action = Build Construct | Trade TradeAction | Discard DiscardAction
+data Action = Purchase Construct | Trade TradeAction | Discard DiscardAction
   deriving (Eq, Show, Ord, Generic)
 
 data PlayerAction = PlayerAction
