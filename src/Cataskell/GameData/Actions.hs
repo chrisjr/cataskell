@@ -82,44 +82,42 @@ mkOffer offer' p
       { _actor = p
       , _action = Trade (Offer offer') }
 
-accept :: GameAction -> Player -> GameAction
-accept (PlayerAction original act') accepter'
-  = case act' of
-      Trade (Offer tradeOffer) ->
-        PlayerAction
+accept :: (Monad m) => GameAction -> Player -> m GameAction
+accept act' accepter'
+  = let offer' = act' ^? action.trade.offer
+    in case offer' of
+      Just tradeOffer ->
+        return PlayerAction
           { _actor = accepter'
           , _action = Trade (Accept { _offer = tradeOffer
-                                    , _asker = original })
-          }
-      _ -> error "Tried to accept something that wasn't an offer"
+                                    , _asker = act' ^. actor }) }
+      Nothing -> fail "Tried to accept something that wasn't an offer"
 
-reject :: GameAction -> Player -> Maybe String -> GameAction
-reject (PlayerAction original act') rejecter' maybeReason
-  = case act' of
-      Trade (Offer tradeOffer) ->
-        PlayerAction
+reject :: (Monad m) => GameAction -> Player -> Maybe String -> m GameAction
+reject act' rejecter' maybeReason
+  = let offer' = act' ^? action.trade.offer
+    in case offer' of
+      Just tradeOffer ->
+        return PlayerAction
           { _actor = rejecter'
           , _action = Trade (Reject { _offer = tradeOffer
-                                    , _asker = original 
+                                    , _asker = act' ^. actor 
                                     , _reason = maybeReason })
           }
-      _ -> error "Tried to reject something that wasn't an offer"
+      Nothing -> fail "Tried to reject something that wasn't an offer"
 
-complete :: GameAction -> GameAction -> GameAction
-complete (PlayerAction p1 offer') (PlayerAction p2 acceptance')
-  = case offer' of
-      Trade (Offer tradeOffer) ->
-        case acceptance' of
-          Trade (Accept x _) ->
-            assert (x == tradeOffer) 
-              PlayerAction
-                { _actor = p1
-                , _action = Trade (CompleteTrade { _offer = tradeOffer
-                                                 , _accepter = p2
-                                                })
-                }
-          _ -> error "The other player did not accept"
-      _ -> error "There was no initial offer"
+complete :: GameAction -> GameAction -> Maybe GameAction
+complete p1offer p2accept = do
+  offer' <- p1offer ^? action.trade.offer
+  offer'' <- p2accept ^? action.trade.offer
+  let p1 = p1offer ^. actor
+  let p2 = p2accept ^. actor
+  return $ assert (offer' == offer'') PlayerAction
+      { _actor = p1
+      , _action = Trade (CompleteTrade { _offer = offer'
+                                       , _accepter = p2
+                                      })
+      }
 
 rollFor :: Player -> GameAction
 rollFor p = PlayerAction

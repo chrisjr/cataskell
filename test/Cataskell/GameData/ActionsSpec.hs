@@ -48,7 +48,7 @@ spec = do
       it "can be checked against the resources of the player" $ do
         p1 `shouldSatisfy` (\p -> enoughFor (p1offer ^? action.trade.offer.offering) p == (Just True))
 
-    let p2accept = accept p1offer p2
+    let p2accept = fromJust $ accept p1offer p2
     describe "An Accept" $ do
       it "should contain the accepter, the original offer and the asker" $ do
         view actor p2accept `shouldBe` p2
@@ -57,7 +57,7 @@ spec = do
       it "can be checked against the resources of the player" $ do
         p2 `shouldSatisfy` (\p -> enoughFor (p2accept ^? action.trade.offer.asking) p == (Just True))
 
-    let p3reject = reject p1offer p3 (Just "nope")
+    let p3reject = fromJust $ reject p1offer p3 (Just "nope")
     describe "A Reject" $ do
       it "should contain the rejecter, original offer and asker" $ do
         view actor p3reject `shouldBe` p3
@@ -66,7 +66,7 @@ spec = do
       it "may contain a reason for rejection" $ do
         p3reject ^? action.trade.reason `shouldBe` (Just (Just "nope"))
 
-    let p1complete = complete p1offer p2accept
+    let p1complete = fromJust $ complete p1offer p2accept
     describe "A CompleteTrade" $ do
       it "can be checked against the resources of both players" $ do
         p1 `shouldSatisfy` (\p -> enoughFor (p1complete ^? action.trade.offer.offering) p == (Just True))
