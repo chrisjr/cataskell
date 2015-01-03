@@ -24,7 +24,7 @@ data Game = Game
   , currentPlayer :: Int
   , turnAdvanceBy :: Int
   , rolled :: Maybe Int
-  , validActions :: [PlayerAction]
+  , validActions :: [GameAction]
   , winner :: Maybe Player
   } deriving (Eq, Ord, Show, Read,Generic)
 
@@ -45,16 +45,16 @@ newGame pNames = do
 getPlayer :: Color -> Game -> Maybe Player
 getPlayer c gs = listToMaybe . filter (\p -> color p == c) $ players gs
 
-validInContext :: PlayerAction -> Game -> Bool
-validInContext pAction game = case (phase game) of
+validInContext :: GameAction -> Game -> Bool
+validInContext act game = case (phase game) of
   Initial ->
-    pAction `elem` validActions game
+    act `elem` validActions game
   Normal ->
-    pAction `elem` validActions game
+    act `elem` validActions game
   RobberAttack ->
-    pAction `elem` validActions game
+    act `elem` validActions game
   MovingRobber ->
-    pAction `elem` validActions game
+    act `elem` validActions game
   End ->
     False
 
@@ -69,7 +69,7 @@ doRoll x = do
   r' <- getRandomR (1, 6)
   return $ x { rolled = (Just r') }
 
-update :: PlayerAction -> Game -> Game
+update :: GameAction -> Game -> Game
 update pAction game = case (phase game) of
   Initial ->
     let isValid = validInContext pAction game
@@ -84,5 +84,5 @@ update pAction game = case (phase game) of
   End ->
     undefined
 
-toEnd :: Player -> Game -> Game
-toEnd p game = game { phase = End, winner = Just p }
+wonBy :: Game -> Player -> Game
+wonBy game p = game { phase = End, winner = Just p }

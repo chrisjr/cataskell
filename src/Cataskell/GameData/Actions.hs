@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Cataskell.GameData.Actions where
 
@@ -8,109 +9,103 @@ import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import Cataskell.GameData.Player
 
+import Control.Lens
 import Control.Exception (assert)
 import GHC.Generics (Generic)
 
 data TradeOffer = TradeOffer 
-  { offering :: ResourceCount
-  , asking :: ResourceCount
-  } deriving (Eq, Show, Read,Ord, Generic)
+  { _offering :: ResourceCount
+  , _asking :: ResourceCount
+  } deriving (Eq, Show, Read, Ord, Generic)
+
+makeLenses ''TradeOffer
 
 data TradeAction
-  = Offer TradeOffer
-  | Accept { offer :: TradeOffer  -- ^ the offer in question
-           , asker :: Player      -- ^ the original player who asked to trade
+  = Offer { _offer :: TradeOffer }
+  | Accept { _offer :: TradeOffer  -- ^ the offer in question
+           , _asker :: Player      -- ^ the original player who asked to trade
            }
-  | Reject { offer :: TradeOffer     -- ^ the offer in question
-           , asker :: Player         -- ^ the original player who asked to trade
-           , reason :: Maybe String  -- ^ the optional reason for rejecting the trade
+  | Reject { _offer :: TradeOffer     -- ^ the offer in question
+           , _asker :: Player         -- ^ the original player who asked to trade
+           , _reason :: Maybe String  -- ^ the optional reason for rejecting the trade
            }
-  | CompleteTrade { offer :: TradeOffer  -- ^ the offer to be completed
-                  , accepter :: Player   -- ^ the player who accepted the trade of the original offerer
+  | CompleteTrade { _offer :: TradeOffer  -- ^ the offer to be completed
+                  , _accepter :: Player   -- ^ the player who accepted the trade of the original offerer
                   }
-  | CancelTrade { offer :: TradeOffer }  -- ^ the offer being canceled
-  deriving (Eq, Show, Read,Ord, Generic)
+  | CancelTrade { _offer :: TradeOffer }  -- ^ the offer being canceled
+  deriving (Eq, Show, Read, Ord, Generic)
+
+makeLenses ''TradeAction
 
 data DiscardAction = DiscardAction
-  { amountToDiscard :: Int
-  , resourcesDiscarding :: ResourceCount
+  { _amountToDiscard :: Int
+  , _resourcesDiscarding :: ResourceCount
   } deriving (Eq, Ord, Show, Read, Generic)
 
-data Action
+makeLenses ''DiscardAction
+
+data PlayerAction
   = Roll
-  | BuildForFree Construct
-  | Purchase Construct
-  | Trade TradeAction
-  | Discard DiscardAction
+  | BuildForFree { _building :: Construct }
+  | Purchase { _building :: Construct }
+  | Trade { _trade :: TradeAction }
+  | Discard { _discarding :: DiscardAction }
   deriving (Eq, Show, Read,Ord, Generic)
 
-data PlayerAction = PlayerAction
-  { actor :: Player
-  , action :: Action
-  } deriving (Eq, Ord, Show, Read, Generic)
+makeLenses ''PlayerAction
 
-mkInitialSettlement :: (Player, Point) -> PlayerAction
+data GameAction
+  = PlayerAction { _actor :: Player
+                 , _action :: PlayerAction }
+  deriving (Eq, Ord, Show, Read, Generic)
+
+makeLenses ''GameAction
+
+mkInitialSettlement :: (Player, Point) -> GameAction
 mkInitialSettlement (player', point')
-  = PlayerAction { actor = player'
-                 , action = BuildForFree (settlement $ Just (point', color player')) }
+  = PlayerAction { _actor = player'
+                 , _action = BuildForFree (settlement $ Just (point', color player')) }
 
-possibleInitialSettlements :: Player -> Board -> [PlayerAction]
+possibleInitialSettlements :: Player -> Board -> [GameAction]
 possibleInitialSettlements p b
   = let ps = freePoints b
     in  map mkInitialSettlement $ zip (repeat p) ps
 
-getTrade :: PlayerAction -> TradeAction
-getTrade (PlayerAction _ act)
-  = case act of
-      Trade x -> x
-      _ -> error "Is not a trade!"
+-- | Enough resources for something
+enoughFor :: Maybe ResourceCount -> Player -> Maybe Bool
+enoughFor amt p
+  = (sufficient (resources p)) `fmap` amt
 
-getOffer :: TradeAction -> TradeOffer
-getOffer x
-  = case x of
-      Offer o -> o
-      Accept o _ -> o
-      Reject o _ _ -> o
-      CompleteTrade o _ -> o
-      CancelTrade o -> o
-
-enoughFor :: PlayerAction -> (TradeOffer -> ResourceCount) -> Player -> Bool
-enoughFor act f p
-  = let tr = getTrade act
-        offer' = getOffer tr
-        amt = f offer'
-    in sufficient (resources p) amt
-
-mkOffer :: TradeOffer -> Player -> PlayerAction
+mkOffer :: TradeOffer -> Player -> GameAction
 mkOffer offer' p
   = PlayerAction
-      { actor = p
-      , action = Trade (Offer offer') }
+      { _actor = p
+      , _action = Trade (Offer offer') }
 
-accept :: PlayerAction -> Player -> PlayerAction
-accept (PlayerAction original act) accepter'
-  = case act of
+accept :: GameAction -> Player -> GameAction
+accept (PlayerAction original act') accepter'
+  = case act' of
       Trade (Offer tradeOffer) ->
         PlayerAction
-          { actor = accepter'
-          , action = Trade (Accept { offer = tradeOffer
-                                   , asker = original })
+          { _actor = accepter'
+          , _action = Trade (Accept { _offer = tradeOffer
+                                    , _asker = original })
           }
       _ -> error "Tried to accept something that wasn't an offer"
 
-reject :: PlayerAction -> Player -> Maybe String -> PlayerAction
-reject (PlayerAction original act) rejecter' maybeReason
-  = case act of
+reject :: GameAction -> Player -> Maybe String -> GameAction
+reject (PlayerAction original act') rejecter' maybeReason
+  = case act' of
       Trade (Offer tradeOffer) ->
         PlayerAction
-          { actor = rejecter'
-          , action = Trade (Reject { offer = tradeOffer
-                                   , asker = original 
-                                   , reason = maybeReason })
+          { _actor = rejecter'
+          , _action = Trade (Reject { _offer = tradeOffer
+                                    , _asker = original 
+                                    , _reason = maybeReason })
           }
       _ -> error "Tried to reject something that wasn't an offer"
 
-complete :: PlayerAction -> PlayerAction -> PlayerAction
+complete :: GameAction -> GameAction -> GameAction
 complete (PlayerAction p1 offer') (PlayerAction p2 acceptance')
   = case offer' of
       Trade (Offer tradeOffer) ->
@@ -118,15 +113,15 @@ complete (PlayerAction p1 offer') (PlayerAction p2 acceptance')
           Trade (Accept x _) ->
             assert (x == tradeOffer) 
               PlayerAction
-                { actor = p1
-                , action = Trade (CompleteTrade { offer = tradeOffer
-                                                , accepter = p2
+                { _actor = p1
+                , _action = Trade (CompleteTrade { _offer = tradeOffer
+                                                 , _accepter = p2
                                                 })
                 }
           _ -> error "The other player did not accept"
       _ -> error "There was no initial offer"
 
-rollFor :: Player -> PlayerAction
+rollFor :: Player -> GameAction
 rollFor p = PlayerAction
-  { actor = p
-  , action = Roll }
+  { _actor = p
+  , _action = Roll }

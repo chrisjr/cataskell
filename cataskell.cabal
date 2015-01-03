@@ -25,6 +25,8 @@ library
                    , random
                    , random-shuffle
                    , MonadRandom
+                   , mtl
+                   , lens
   exposed-modules:   Cataskell.BoardGraph
                      Cataskell.Game
                      Cataskell.GameData.Actions
@@ -61,6 +63,8 @@ test-suite tests
                     , random
                     , random-shuffle
                     , MonadRandom
+                    , mtl
+                    , lens
                     , deepseq
                     , QuickCheck
   default-language:   Haskell2010
