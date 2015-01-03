@@ -46,7 +46,8 @@ mkPlayers = map mkPlayer . zip [Red, Blue, Orange, White]
 validPlayer :: Player -> Bool
 validPlayer p
   = let resourcesNonNegative = nonNegative $ resources p
-        allBuildingsColoredRight = all (== color p) . map color . catMaybes . map getBuilding $ constructed p
+        bldgs = catMaybes . map getBuildingFromItem $ constructed p
+        allBuildingsColoredRight = all (== color p) . map color $ bldgs
     in resourcesNonNegative && allBuildingsColoredRight
 
 totalPointsOf :: Valuable a => [a] -> Int

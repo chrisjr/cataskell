@@ -21,8 +21,9 @@ module Cataskell.GameData.Basics
 , isHabitation
 , habitationType
 , isVictoryPoint
-, getBuilding
+, getBuildingFromItem
 , getActualItem
+, getBuildingFromConstruct
 , Terrain(..)
 , Color(..)
 , Colored(..)
@@ -133,8 +134,8 @@ isVictoryPoint x = case x of
   Card VictoryPoint -> True
   _ -> False
 
-getBuilding :: ActualItem -> Maybe ActualBuilding
-getBuilding x = case x of
+getBuildingFromItem :: ActualItem -> Maybe ActualBuilding
+getBuildingFromItem x = case x of
   Building y -> Just y
   Card _ -> Nothing
 
@@ -142,6 +143,11 @@ getActualItem :: Construct -> Maybe ActualItem
 getActualItem x = case x of 
   Built y -> Just y
   Unbuilt _ -> Nothing
+
+getBuildingFromConstruct :: Construct -> Maybe ActualBuilding
+getBuildingFromConstruct x = do
+  item <- getActualItem x
+  getBuildingFromItem item
 
 instance Valuable ActualItem where
   pointValue (Building (OnPoint (H Settlement _ _))) = 1

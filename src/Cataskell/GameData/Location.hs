@@ -47,10 +47,10 @@ neighborCoords c
   = let lst = [ (x,y) + c | y <- [-1..1], x <- [-1..1], (withinHexRadius 1 c) $ (x, y) + c]
     in  filter (\x -> x /= c && x `elem` hexCoords) lst
 
-hexNeighborhoods :: Map.Map Point [Point]
+hexNeighborhoods :: Map.Map CentralPoint [CentralPoint]
 hexNeighborhoods = Map.fromList hexN
   where hexN = zip hexCenterPoints nns
-        nns = map (map mkCenter) $ map getNs hexCoords
+        nns = map (map (toCenter . mkCenter)) $ map getNs hexCoords
         getNs hc = let nc = neighborCoords hc
                    in  delete hc nc
 
@@ -79,8 +79,8 @@ fromCenter (Central p) = p
 mkCenter :: HexCoord -> Point
 mkCenter hexCoord = Point { coord = hexCoord, position = Center }
 
-hexCenterPoints :: [Point]
-hexCenterPoints = map mkCenter hexCoords
+hexCenterPoints :: [CentralPoint]
+hexCenterPoints = map (toCenter . mkCenter) hexCoords
 
 -- | Vertices around the edge of a given hex.
 pointsAroundHex :: CentralPoint -> [Point]
@@ -95,7 +95,7 @@ pointsAroundHex centerPoint
     in  [p1, p2, p3, p4, p5, p6]
 
 allPoints :: [Point]
-allPoints = nub (hexCenterPoints ++ concatMap (pointsAroundHex . toCenter) hexCenterPoints)
+allPoints = nub $ concatMap pointsAroundHex hexCenterPoints
 
 mkHexPointsAndEdges :: CentralPoint -> ([Point], [UndirectedEdge])
 mkHexPointsAndEdges centerPoint

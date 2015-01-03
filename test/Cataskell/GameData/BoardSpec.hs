@@ -10,9 +10,11 @@ import Test.QuickCheck
 import Cataskell.GameData.Board
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
+import Cataskell.GameData.Location
 import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty)
+import Data.Maybe
 import Control.Monad.Random
 import Control.Applicative ((<$>))
 
@@ -101,5 +103,7 @@ spec = do
       \board -> length (freePoints (board :: Board)) == 54
     it "can be queried for colors affected by a roll" $ do
       let board = evalRand newBoard $ mkStdGen 0
-      let board' = undefined
-      resourcesFromRoll board' 6 Blue `shouldBe` mempty
+      let bldg = fromJust . getBuildingFromConstruct $ settlement $ Just ((Point (0,0) Top), Blue)
+      let board' = build bldg board
+      print $ filter (\x -> roll (snd x) == 6) . Map.toList $ hexes board
+      resourcesFromRoll board' 6 Blue `shouldBe` mempty { ore = 1 }
