@@ -11,26 +11,26 @@ import Data.List
 import Data.Maybe (fromJust)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
-newtype InitialGameState = InitialGame GameState
+newtype InitialGame = InitialGame Game
   deriving (Eq, Ord, Show, Read)
 
-toInitial :: GameState -> InitialGameState
-toInitial x | phase x == Initial = InitialGame x
+toInitialGame :: Game -> InitialGame
+toInitialGame x | phase x == Initial = InitialGame x
            | otherwise = error "Game state is not initial"
 
-fromInitial :: InitialGameState -> GameState
-fromInitial (InitialGame x) = x
+fromInitialGame :: InitialGame -> Game
+fromInitialGame (InitialGame x) = x
 
-instance Arbitrary GameState where
+instance Arbitrary Game where
   arbitrary = do
     initial <- arbitrary
-    return $ fromInitial initial
+    return $ fromInitialGame initial
 
-instance Arbitrary InitialGameState where
+instance Arbitrary InitialGame where
   arbitrary = do
     seed <- arbitrary
     names <- elements [["1", "2", "3"], ["1", "2", "3", "4"]]
-    return $ toInitial $ evalRand (newGame names) (mkStdGen seed)
+    return $ toInitialGame $ evalRand (newGame names) (mkStdGen seed)
 
 main :: IO ()
 main = hspec spec
@@ -39,16 +39,16 @@ spec :: Spec
 spec = do
   describe "A new game" $ do
     it "should start in the Initial phase" $ property $
-      \g -> (phase $ fromInitial (g :: InitialGameState)) == Initial
-  describe "Any GameState" $ do
+      \g -> (phase $ fromInitialGame (g :: InitialGame)) == Initial
+  describe "Any Game" $ do
     it "must have either 3 or 4 players" $ property $
-      \game -> let l = length $ players (game :: GameState)
+      \game -> let l = length $ players (game :: Game)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
-      \game -> let p = getPlayer Blue (game :: GameState)
+      \game -> let p = getPlayer Blue (game :: Game)
                in validPlayer $ fromJust p
     it "has a list of valid next actions, except at the end" $ property $
-      \game -> let n = length $ validActions (game :: GameState)
+      \game -> let n = length $ validActions (game :: Game)
                in (n > 0) || (phase game == End)
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores = map score $ players game
