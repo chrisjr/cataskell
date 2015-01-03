@@ -11,7 +11,7 @@ import Control.Monad.Random
 import Control.Monad.State
 import Data.List
 import Data.Maybe (fromJust)
-import Control.Lens ((^.), view, to, use, uses)
+import Control.Lens ((^.), (^..), view, to, use, uses)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
 newtype InitialGame = InitialGame Game
@@ -54,7 +54,7 @@ spec = do
       \game -> let n = (game :: Game) ^.validActions.to length
                in (n > 0) || (view phase game == End)
     it "has at most one player with >= 10 victory points" $ property $
-      \game -> let scores = map score $ view players game
+      \game -> let scores = map (view score) $ game ^. players
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores
                in  (fst highestCount >= 10) == (snd highestCount == 1)
 
@@ -69,7 +69,7 @@ spec = do
       it "should transition to Normal phase when placements are complete" $ do
         pending
 
-    let normalGame = evalRand (execStateT toNormal initialGame) (mkStdGen 0)
+    let normalGame = runGame initialToNormal initialGame (mkStdGen 0)
     context "in Normal phase" $ do
       it "should start each turn with a roll" $ do
         let vA = evalState (use validActions) normalGame

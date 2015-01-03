@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Cataskell.GameData.Player
 ( Player
@@ -18,26 +19,29 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
 import Data.Monoid (mempty)
 import Data.Maybe
+import Control.Lens
 import GHC.Generics (Generic)
 
 data Player = Player
-  { playerName :: String
-  , playerColor :: Color
-  , resources :: ResourceCount
-  , constructed :: [ActualItem]
-  , bonuses :: [Bonus]
+  { _playerName :: String
+  , _playerColor :: Color
+  , _resources :: ResourceCount
+  , _constructed :: [ActualItem]
+  , _bonuses :: [Bonus]
   } deriving (Eq, Show, Read,Ord, Generic)
 
+makeLenses ''Player
+
 instance Colored Player where
-  color = playerColor
+  color = view playerColor
 
 mkPlayer :: (Color, String) -> Player
 mkPlayer (c, n) = Player
-  { playerName = n
-  , playerColor = c
-  , resources = mempty
-  , constructed = []
-  , bonuses = []
+  { _playerName = n
+  , _playerColor = c
+  , _resources = mempty
+  , _constructed = []
+  , _bonuses = []
   }
 
 mkPlayers :: [String] -> [Player]
@@ -45,25 +49,28 @@ mkPlayers = map mkPlayer . zip [Red, Blue, Orange, White]
 
 validPlayer :: Player -> Bool
 validPlayer p
-  = let resourcesNonNegative = nonNegative $ resources p
-        bldgs = catMaybes . map getBuildingFromItem $ constructed p
+  = let resourcesNonNegative = views resources nonNegative p
+        bldgs = catMaybes . map getBuildingFromItem $ (p ^. constructed)
         allBuildingsColoredRight = all (== color p) . map color $ bldgs
     in resourcesNonNegative && allBuildingsColoredRight
 
 totalPointsOf :: Valuable a => [a] -> Int
 totalPointsOf = sum . map pointValue
 
-displayScore :: Player -> Int
-displayScore p = regularPoints + bonusPoints
-  where regularPoints = totalPointsOf . filter (not . isVictoryPoint) $ constructed p
-        bonusPoints   = totalPointsOf $ bonuses p
+displayScore :: Getter Player Int
+displayScore = to displayScore'
+  where displayScore' p = regularPoints p + bonusPoints p
+        regularPoints p = totalPointsOf . filter (not . isVictoryPoint) $ p ^. constructed
+        bonusPoints   p = views bonuses totalPointsOf p
 
-score :: Player -> Int
-score p = displayScore p + victoryPointCards
-  where victoryPointCards = totalPointsOf . filter isVictoryPoint $ constructed p
+score :: Getter Player Int
+score = to score'
+  where score' p = view displayScore p + victoryPointCards p
+        victoryPointCards p = totalPointsOf . filter isVictoryPoint $ p ^. constructed
 
-devCards :: Player -> [DevelopmentCard]
-devCards = concatMap getDevCard . constructed
-  where getDevCard c = case c of
+devCards :: Getter Player [DevelopmentCard]
+devCards = to devCards'
+  where devCards' = concatMap getDevCard . view constructed
+        getDevCard c = case c of
           Card x -> [x]
           _ -> []

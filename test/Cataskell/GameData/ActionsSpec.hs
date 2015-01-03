@@ -36,9 +36,9 @@ spec = do
     let oneWheat = (mempty { wheat = 1 }) :: ResourceCount
     let oneOre = (mempty { ore = 1 }) :: ResourceCount
     let offer' = TradeOffer { _offering = oneWheat, _asking = oneOre }
-    let p1 = (mkPlayer (Blue, "NoOne")) { resources = mempty { wheat = 2, ore = 2 } }
+    let p1 = resources .~ mempty { wheat = 2, ore = 2 } $ mkPlayer (Blue, "NoOne")
     let p1offer = mkOffer offer' p1
-    let p2 = (mkPlayer (White, "Nobody")) { resources = mempty { ore = 3 } }
+    let p2 = resources .~ mempty { ore = 3 } $ mkPlayer (White, "Nobody")
     let p3 = mkPlayer (Orange, "Nadie")
 
     describe "A TradeOffer" $ do

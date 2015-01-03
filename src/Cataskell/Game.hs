@@ -11,10 +11,12 @@ import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
 import Cataskell.GameData.Player
+import Cataskell.GameData.Resources
 import Control.Lens
 import GHC.Generics (Generic)
 
 type GameState g = StateT Game (RandT g Identity) ()
+type GameStateReturning g = StateT Game (RandT g Identity)
 
 data Phase = Initial | Normal | RobberAttack | MovingRobber | End
   deriving (Eq, Ord, Show, Read, Generic)
@@ -46,26 +48,11 @@ newGame pNames = do
                 , _validActions = possibleInitialSettlements (head ps) b
                 , _winner = Nothing }
 
+runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
+runGame stModify game stdgen = evalRand (execStateT stModify game) stdgen
+
 getPlayer :: Color -> Game -> Maybe Player
 getPlayer c gs = listToMaybe . filter (\p -> color p == c) $ gs ^. players
-
-validInContext :: GameAction -> Game -> Bool
-validInContext action' game = case (game ^. phase) of
-  Initial ->
-    action' `elem` (game ^. validActions)
-  Normal ->
-    action' `elem` (game ^. validActions)
-  RobberAttack ->
-    action' `elem` (game ^. validActions)
-  MovingRobber ->
-    action' `elem` (game ^. validActions)
-  End ->
-    False
-
-doRoll :: (RandomGen g) => GameState g
-doRoll = do
-  r <- getRandomR (1, 6)
-  rolled .= (Just r)
 
 update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
@@ -83,14 +70,64 @@ update action' = do
       undefined
 
 updateInitial :: (RandomGen g) => GameAction -> GameState g
-updateInitial = undefined
+updateInitial action' = do
+  totalPlayers <- uses players length
+  let lastPlayerIndex = totalPlayers - 1
+  currentIndex <- use currentPlayer
 
-toNormal :: (RandomGen g) => GameState g
-toNormal = do
+  when (lastPlayerIndex == currentIndex) $ turnAdvanceBy .= -1
+
+  checkAndExecute action'
+
+checkAndExecute :: (RandomGen g) => GameAction -> GameState g
+checkAndExecute action' = do
+  valid <- isValid action'
+  when (valid) $ doAction action'
+
+isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
+isValid action' = do
+  current <- get
+  let predicates' = preconditions action'
+  let valid = and $ map ($ current) predicates'
+  return valid
+
+-- | Returns a series of predicates that must be true for an action to proceed
+preconditions :: GameAction -> [Game -> Bool]
+preconditions = undefined
+
+doAction :: (RandomGen g) => GameAction -> GameState g
+doAction = undefined
+
+doRoll :: (RandomGen g) => GameState g
+doRoll = do
+  r <- getRandomR (1, 6)
+  rolled .= (Just r)
+
+-- * State transitions
+
+-- | Move to Normal phase (from Initial)
+initialToNormal :: (RandomGen g) => GameState g
+initialToNormal = do
   phase .= Normal
   p <- (uses players head)
   validActions .= [rollFor p]
 
+-- | When a 7 is rolled, move into RobberAttack. If no one has more than 7 resources, move on to MovingRobber.
+toRobberAttack :: (RandomGen g) => GameState g
+toRobberAttack = do
+  ps <- use players
+  let pRes = map (\p -> (p, totalResources (p ^. resources))) ps
+  let mustDiscard = map mkDiscard $ filter (\(_, r) -> r > 7) pRes
+  if (length mustDiscard > 0) then sequence_ [ validActions .= mustDiscard
+                                             , phase .= RobberAttack ]
+                              else toMovingRobber
+
+-- | Switch to MovingRobber phase
+toMovingRobber :: (RandomGen g) => GameState g
+toMovingRobber = do
+  phase .= MovingRobber
+
+-- | Game won by player p.
 wonBy :: (RandomGen g) => Player -> GameState g
 wonBy p = do
   phase .= End

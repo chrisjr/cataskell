@@ -10,6 +10,7 @@ import Cataskell.GameData.Resources
 import Cataskell.GameData.Player
 
 import Control.Lens
+import Data.Monoid (mempty)
 import Control.Exception (assert)
 import GHC.Generics (Generic)
 
@@ -61,6 +62,16 @@ data GameAction
 
 makeLenses ''GameAction
 
+-- | Create an empty Discard action
+mkDiscard :: (Player, Int) -> GameAction
+mkDiscard (p, currentTotal)
+  = PlayerAction { _actor = p
+                 , _action = Discard DiscardAction
+                    { _amountToDiscard = currentTotal `div` 2
+                    , _resourcesDiscarding = mempty 
+                    } 
+                 }
+
 mkInitialSettlement :: (Player, Point) -> GameAction
 mkInitialSettlement (player', point')
   = PlayerAction { _actor = player'
@@ -74,7 +85,7 @@ possibleInitialSettlements p b
 -- | Enough resources for something
 enoughFor :: Maybe ResourceCount -> Player -> Maybe Bool
 enoughFor amt p
-  = (sufficient (resources p)) `fmap` amt
+  = (sufficient (p ^. resources)) `fmap` amt
 
 mkOffer :: TradeOffer -> Player -> GameAction
 mkOffer offer' p
