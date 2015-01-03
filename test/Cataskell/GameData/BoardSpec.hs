@@ -101,9 +101,13 @@ spec = do
       \board -> buildings (board :: Board) == emptyBuildingMap
     it "can be queried for open points" $ property $
       \board -> length (freePoints (board :: Board)) == 54
+    it "can be queried for open points after building" $ property $
+      \p board -> let bldg = fromJust . getBuildingFromConstruct $ settlement $ Just ((p :: Point), Blue)
+                      board' = build bldg (board :: Board)
+                      l = length (freePoints board')
+                  in  l == 51 || l == 50 -- at least 3 points now off limits, possibly 4
     it "can be queried for colors affected by a roll" $ do
       let board = evalRand newBoard $ mkStdGen 0
       let bldg = fromJust . getBuildingFromConstruct $ settlement $ Just ((Point (0,0) Top), Blue)
       let board' = build bldg board
-      print $ filter (\x -> roll (snd x) == 6) . Map.toList $ hexes board
       resourcesFromRoll board' 6 Blue `shouldBe` mempty { ore = 1 }

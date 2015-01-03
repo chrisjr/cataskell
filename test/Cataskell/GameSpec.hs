@@ -62,6 +62,9 @@ spec = do
 
     let initialGame = evalRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
     context "in Initial phase" $ do
+      it "should initially allow a settlement built anywhere" $ do
+        let valids = view validActions initialGame
+        length valids `shouldBe` 54
       it "should cycle through players forward once, allowing for initial placements" $ do
         pending
       it "should go backwards after reaching the last player" $ do
