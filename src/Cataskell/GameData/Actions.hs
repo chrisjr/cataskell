@@ -3,6 +3,8 @@
 module Cataskell.GameData.Actions where
 
 import Cataskell.GameData.Basics
+import Cataskell.GameData.Board
+import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import Cataskell.GameData.Player
 
@@ -34,13 +36,28 @@ data DiscardAction = DiscardAction
   , resourcesDiscarding :: ResourceCount
   } deriving (Eq, Ord, Show, Read, Generic)
 
-data Action = Roll | Purchase Construct | Trade TradeAction | Discard DiscardAction
+data Action
+  = Roll
+  | BuildForFree Construct
+  | Purchase Construct
+  | Trade TradeAction
+  | Discard DiscardAction
   deriving (Eq, Show, Read,Ord, Generic)
 
 data PlayerAction = PlayerAction
   { actor :: Player
   , action :: Action
   } deriving (Eq, Ord, Show, Read, Generic)
+
+mkInitialSettlement :: (Player, Point) -> PlayerAction
+mkInitialSettlement (player', point')
+  = PlayerAction { actor = player'
+                 , action = BuildForFree (settlement $ Just (point', color player')) }
+
+possibleInitialSettlements :: Player -> Board -> [PlayerAction]
+possibleInitialSettlements p b
+  = let ps = freePoints b
+    in  map mkInitialSettlement $ zip (repeat p) ps
 
 getTrade :: PlayerAction -> TradeAction
 getTrade (PlayerAction _ act)

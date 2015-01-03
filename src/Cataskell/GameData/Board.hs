@@ -19,16 +19,20 @@ module Cataskell.GameData.Board
 , emptyBuildingMap
 , emptyRoadMap
 , newBoard
+, freePoints
+, resourcesFromRoll
 ) where
 
 
-import Cataskell.BoardGraph (allEdges)
+import Cataskell.BoardGraph (allEdges, neighborPoints, resourceConnections, roadConnections)
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
+import Data.List ((\\), intersect)
+import Data.Monoid
 import qualified Data.Map.Strict as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isJust)
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -135,3 +139,26 @@ newBoard = do
   return Board { hexes = hexMap
                , roads = emptyRoadMap
                , buildings = emptyBuildingMap }
+
+getHabitations :: Board -> Map.Map Point ActualBuilding
+getHabitations b
+  = Map.mapMaybe id $ buildings b
+
+freePoints :: Board -> [Point]
+freePoints b
+  = let occupiedPoints = Map.keys . Map.filter (isJust) $ buildings b
+        nns = concatMap (neighborPoints roadConnections) occupiedPoints
+    in  allPoints \\ (occupiedPoints ++ nns)
+
+resourcesFromRoll :: Board -> Int -> Color -> ResourceCount
+resourcesFromRoll b r c = foldl ((<>)) mempty lst
+  where lst = map (\(b', r') -> if (habitationType b' == City) then mulResources r' 2 else r') bldgsRes
+        bldgsRes = zip (map ((Map.!) bldgs) pts) (map getResForHex pts)
+        getResForHex p = let hC = (Map.!) hexes' p
+                             res = resource hC
+                         in  if hasRobber hC then mempty else res
+        pts = hexPts `intersect` bldgPts
+        hexes' = Map.filter (\x -> roll x == r) $ hexes b
+        hexPts = concatMap (neighborPoints resourceConnections) $ Map.keys hexes' 
+        bldgPts = Map.keys bldgs 
+        bldgs = Map.filter (\x -> color x == c) $ getHabitations b

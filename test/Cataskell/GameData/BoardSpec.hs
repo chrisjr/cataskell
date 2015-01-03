@@ -97,3 +97,9 @@ spec = do
   describe "A Board" $ do
     it "should start off with no buildings and no roads" $ property $
       \board -> buildings (board :: Board) == emptyBuildingMap
+    it "can be queried for open points" $ property $
+      \board -> length (freePoints (board :: Board)) == 54
+    it "can be queried for colors affected by a roll" $ do
+      let board = evalRand newBoard $ mkStdGen 0
+      let board' = undefined
+      resourcesFromRoll board' 6 Blue `shouldBe` mempty

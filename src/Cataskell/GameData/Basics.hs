@@ -18,6 +18,8 @@ module Cataskell.GameData.Basics
 , city
 , road
 , devCard
+, isHabitation
+, habitationType
 , isVictoryPoint
 , getBuilding
 , getActualItem
@@ -115,6 +117,16 @@ devCard :: Maybe DevelopmentCard -> Construct
 devCard  x = case x of
   Just d -> Built $ Card d
   Nothing -> Unbuilt $ DevCard
+
+isHabitation :: ActualBuilding -> Bool
+isHabitation x = case x of
+  OnPoint (H _ _ _) -> True
+  OnEdge _ -> False
+
+habitationType :: ActualBuilding -> Inhabited
+habitationType x = case x of
+  OnPoint (H y _ _) -> y
+  OnEdge _ -> error "not a habitation"
 
 isVictoryPoint :: ActualItem -> Bool
 isVictoryPoint x = case x of
