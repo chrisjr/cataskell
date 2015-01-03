@@ -58,7 +58,7 @@ spec = do
       (payFor res4 $ unbuilt devCard) `shouldBe` Just mempty
       (payFor mempty $ unbuilt devCard) `shouldBe` Nothing
     it "can be checked to be all non-negative" $ property $
-      \res -> nonNegative (res :: ResourceCount) && not (nonNegative $ mkNeg res)
+      \res -> nonNegative (res :: ResourceCount)
   describe "resourceFromTerrain" $ do
     it "gets the appropriate resource for a terrain type" $ do
       resourceFromTerrain Forest `shouldBe` mempty { lumber =  1 }
