@@ -117,18 +117,24 @@ progress = do
   adv <- use turnAdvanceBy
   totalPlayers <- uses players length
   p <- use phase
-  let next' = (totalPlayers + current + adv) `mod` totalPlayers 
+  let next' = (totalPlayers + current + adv) `mod` totalPlayers
+  let newAdv x | x == 3 && adv == 1 = 0
+               | x == 3 && adv == 0 = -1
+               | otherwise = adv
   nextPlayer <- uses players ((flip (!!)) next')
   nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
   case p of
-    Initial -> sequence_ $
-      [ currentPlayer .= next'
-      , validActions .= nextActionsIfInitial ]
+    Initial -> if (current == 0 && adv == -1) 
+               then initialToNormal
+               else sequence_ $
+                      [ currentPlayer .= next'
+                      , validActions .= nextActionsIfInitial
+                      , turnAdvanceBy .= newAdv next' ]
     Normal -> sequence_ $
       [ currentPlayer .= next'
       , validActions .= [rollFor nextPlayer]]
-    RobberAttack -> return ()
-    MovingRobber -> return ()
+    RobberAttack -> return () -- if progress called when robber attacks, do nothing
+    MovingRobber -> return () -- if progress called when moving robber, do nothing
     End -> return ()
 -- * State transitions
 

@@ -12,7 +12,7 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
 import Data.Maybe (fromJust)
-import Control.Lens ((^.), (^..), view, to, use, uses)
+import Control.Lens ((^.), (^..), view, views, to, use, uses)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
 newtype InitialGame = InitialGame Game
@@ -68,12 +68,20 @@ spec = do
       it "should initially allow a settlement built anywhere" $ do
         let valids = view validActions initialGame
         length valids `shouldBe` 54
-      it "should cycle through players forward once, allowing for initial placements" $ do
-        pending
-      it "should go backwards after reaching the last player" $ do
-        pending
+
+      let gs = iterate (\x -> runGame progress x r') initialGame
+      context "when cycling through players forward then back" $ do
+        let playerIs = [0, 1, 2, 3, 3, 2, 1, 0]
+
+        forM_ (zip playerIs gs) $ \(i, g) ->
+          it ("should permit placement for player " ++ (show i)) $ do
+            view currentPlayer g `shouldBe` i
+            views validActions length g `shouldBe` 54
+
       it "should transition to Normal phase when placements are complete" $ do
-        pending
+        let g = gs !! 8
+        view phase g `shouldBe` Normal
+        views validActions length g `shouldBe` 1
 
     let normalGame = runGame initialToNormal initialGame (mkStdGen 0)
     context "in Normal phase" $ do
