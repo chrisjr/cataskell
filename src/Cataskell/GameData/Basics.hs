@@ -1,36 +1,40 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Cataskell.GameData.Basics
 ( Valuable(..)
-, Inhabited(..)
-, Road(..)
-, PotentialBuilding(..)
 , DevelopmentCard(..)
-, PotentialItem(..)
-, ActualHabitation(..)
-, ActualRoad(..)
-, ActualBuilding(..)
-, ActualItem(..)
+, Inhabited(..)
+, ItemType(..)
+, OnPoint(..)
+, OnEdge(..)
 , Construct(..)
+, Item(..)
+, itemType
+, building
+, point
+, edge
+, buildingType
+, onPoint
+, onEdge
 , unbuilt
+, built
 , settlement
 , city
 , road
 , devCard
-, isHabitation
-, habitationType
 , isVictoryPoint
-, getBuildingFromItem
-, getActualItem
-, getBuildingFromConstruct
 , Terrain(..)
+, Harbor(..)
 , Color(..)
 , Colored(..)
 , Bonus(..)
+, initialItems
 ) where
 
 import Cataskell.GameData.Location
+import Control.Lens
+import Data.Maybe (fromJust)
 import GHC.Generics (Generic)
 
 -- | Possible colors of player tokens
@@ -41,6 +45,10 @@ data Color = Red | Blue | Orange | White
 data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
   deriving (Eq, Ord, Show, Read,Generic)
 
+-- | Harbors allow exchanging 2 of a terrain's resource type for anything, or 3 of anything for 1 anything else
+data Harbor = Harbor Terrain | ThreeToOne
+  deriving (Eq, Ord, Show, Read, Generic)
+
 -- | Class of items with point value
 class Valuable a where
   pointValue :: a -> Int
@@ -49,115 +57,92 @@ class Valuable a where
 class Colored a where
   color :: a -> Color
 
--- | Types of buildings that live on points
-data Inhabited = Settlement | City
-  deriving (Eq, Ord, Show, Read,Generic)
-
-data Road = Road
-  deriving (Eq, Ord, Show, Read,Generic)
-
--- | Types of placeable items by players (if placed, must also have a player color)
-data PotentialBuilding
-  = HabitationToBe Inhabited
-  | RoadToBe Road
-  deriving (Eq, Ord, Show, Read,Generic)
-
 -- | Development cards for special actions
 data DevelopmentCard = Knight | RoadBuilding | Invention | Monopoly | VictoryPoint
-  deriving (Eq, Ord, Show, Read,Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
-data PotentialItem = Potential PotentialBuilding | DevCard
-  deriving (Eq, Ord, Show, Read,Generic)
+data Inhabited = Settlement | City
+  deriving (Eq, Ord, Show, Read, Generic)
 
-data ActualHabitation = H Inhabited Point Color
-  deriving (Eq, Ord, Show, Read,Generic)
+data ItemType = H Inhabited | Road | DevelopmentCard
+  deriving (Eq, Ord, Show, Read, Generic)
 
-data ActualRoad = R Road UndirectedEdge Color
-  deriving (Eq, Ord, Show, Read,Generic)
+data OnPoint = OnPoint { _point :: Point, _pointColor :: Color, _buildingType :: Inhabited }
+  deriving (Eq, Ord, Show, Read, Generic)
 
-data ActualBuilding
-  = OnPoint ActualHabitation
-  | OnEdge ActualRoad
-  deriving (Eq, Ord, Show, Read,Generic)
+data OnEdge = OnEdge { _edge :: UndirectedEdge, _edgeColor :: Color }
+  deriving (Eq, Ord, Show, Read, Generic)
 
-data ActualItem
-  = Building ActualBuilding
-  | Card DevelopmentCard
-  deriving (Eq, Ord, Show, Read,Generic)
+data Construct = Edifice { _onPoint :: OnPoint } | Roadway { _onEdge :: OnEdge }
+  deriving (Eq, Ord, Show, Read, Generic)
 
-data Construct
-  = Built ActualItem
-  | Unbuilt PotentialItem
-  deriving (Eq, Ord, Show, Read,Generic)
+data Item
+  = Building { _building :: Construct }
+  | Card { _card :: DevelopmentCard }
+  | Potential { _itemType :: ItemType }
+  deriving (Eq, Ord, Show, Read, Generic)
 
-instance Colored ActualBuilding where
-  color (OnPoint (H _ _ c)) = c
-  color (OnEdge (R _ _ c)) = c
+makeLenses ''OnPoint
+makeLenses ''OnEdge
+makeLenses ''Construct
+makeLenses ''Item
 
-unbuilt :: (Maybe a -> Construct) -> PotentialItem
-unbuilt x = case x Nothing of
-  Unbuilt p -> p
-  Built _ -> error "Can't get PotentialItem from ActualItem"
+instance Colored OnPoint where
+  color = view pointColor
 
-settlement :: Maybe (Point, Color) -> Construct
+instance Colored OnEdge where
+  color = view edgeColor
+
+instance Colored Construct where
+  color (Edifice p) = p ^. pointColor
+  color (Roadway e) = e ^. edgeColor
+
+unbuilt :: (Maybe a -> Item) -> Item
+unbuilt = ($ Nothing)
+
+built :: Item -> Construct
+built = fromJust . preview building
+
+settlement :: Maybe (Point, Color) -> Item
 settlement x = case x of
-  Just (p, c) -> Built . Building . OnPoint $ H Settlement p c
-  Nothing -> Unbuilt . Potential $ HabitationToBe Settlement
+  Just (p, c) -> Building (Edifice (OnPoint p c Settlement))
+  Nothing -> Potential (H Settlement)
 
-city :: Maybe (Point, Color) -> Construct
+city :: Maybe (Point, Color) -> Item
 city x = case x of
-  Just (p, c) -> Built . Building . OnPoint $ H City p c
-  Nothing -> Unbuilt . Potential $ HabitationToBe City
+  Just (p, c) -> Building (Edifice (OnPoint p c City))
+  Nothing -> Potential (H City)
 
-road :: Maybe (UndirectedEdge, Color) -> Construct
+road :: Maybe (UndirectedEdge, Color) -> Item
 road x = case x of
-  Just (e, c) -> Built . Building $ OnEdge $ R Road e c
-  Nothing -> Unbuilt . Potential $ RoadToBe Road
+  Just (e, c) -> Building (Roadway (OnEdge e c))
+  Nothing -> Potential Road
 
-devCard :: Maybe DevelopmentCard -> Construct
+devCard :: Maybe DevelopmentCard -> Item
 devCard  x = case x of
-  Just d -> Built $ Card d
-  Nothing -> Unbuilt $ DevCard
+  Just d -> Card d
+  Nothing -> Potential DevelopmentCard
 
-isHabitation :: ActualBuilding -> Bool
-isHabitation x = case x of
-  OnPoint (H _ _ _) -> True
-  OnEdge _ -> False
-
-habitationType :: ActualBuilding -> Inhabited
-habitationType x = case x of
-  OnPoint (H y _ _) -> y
-  OnEdge _ -> error "not a habitation"
-
-isVictoryPoint :: ActualItem -> Bool
-isVictoryPoint x = case x of
-  Card VictoryPoint -> True
+isVictoryPoint :: Item -> Bool
+isVictoryPoint x = case (x ^? card) of
+  Just VictoryPoint -> True
   _ -> False
 
-getBuildingFromItem :: ActualItem -> Maybe ActualBuilding
-getBuildingFromItem x = case x of
-  Building y -> Just y
-  Card _ -> Nothing
-
-getActualItem :: Construct -> Maybe ActualItem
-getActualItem x = case x of 
-  Built y -> Just y
-  Unbuilt _ -> Nothing
-
-getBuildingFromConstruct :: Construct -> Maybe ActualBuilding
-getBuildingFromConstruct x = do
-  item <- getActualItem x
-  getBuildingFromItem item
-
-instance Valuable ActualItem where
-  pointValue (Building (OnPoint (H Settlement _ _))) = 1
-  pointValue (Building (OnPoint (H City _ _))) = 2
+instance Valuable Item where
+  pointValue (Building (Edifice (OnPoint _ _ Settlement))) = 1
+  pointValue (Building (Edifice (OnPoint _ _ City))) = 2
   pointValue (Card VictoryPoint) = 1
   pointValue _ = 0
 
 -- | Bonuses conferred when achieving longest road/largest army
 data Bonus = LongestRoad | LargestArmy
   deriving (Eq, Ord, Show, Read,Generic)
+
+initialItems :: [Item]
+initialItems = settlements ++ cities ++ roads
+  where settlements = replicate 5 (Potential (H Settlement))
+        cities = replicate 4 (Potential (H City))
+        roads = replicate 15 (Potential Road)
 
 instance Valuable Bonus where
   pointValue _ = 2

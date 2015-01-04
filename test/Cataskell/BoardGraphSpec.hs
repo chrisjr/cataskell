@@ -10,6 +10,9 @@ import Data.Tuple (swap)
 import Data.Graph.Inductive.Basic (elfilter)
 import Data.Graph.Inductive.Graph (empty, labEdges, labNodes, neighbors)
 
+instance Arbitrary UndirectedEdge where
+  arbitrary = elements allEdges
+
 main :: IO ()
 main = hspec spec
 

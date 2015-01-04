@@ -34,6 +34,7 @@ data TradeAction
                   , _accepter :: Player   -- ^ the player who accepted the trade of the original offerer
                   }
   | CancelTrade { _offer :: TradeOffer }  -- ^ the offer being canceled
+  | Exchange { _offer :: TradeOffer }     -- ^ exchange with any harbor benefits applied
   deriving (Eq, Show, Read, Ord, Generic)
 
 makeLenses ''TradeAction
@@ -47,8 +48,8 @@ makeLenses ''DiscardAction
 
 data PlayerAction
   = Roll
-  | BuildForFree { _building :: Construct }
-  | Purchase { _building :: Construct }
+  | BuildForFree { _construct :: Construct }
+  | Purchase { _item :: Item }
   | Trade { _trade :: TradeAction }
   | Discard { _discarding :: DiscardAction }
   deriving (Eq, Show, Read,Ord, Generic)
@@ -75,7 +76,7 @@ mkDiscard (p, currentTotal)
 mkInitialSettlement :: (Player, Point) -> GameAction
 mkInitialSettlement (player', point')
   = PlayerAction { _actor = player'
-                 , _action = BuildForFree (settlement $ Just (point', color player')) }
+                 , _action = BuildForFree (built . settlement $ Just (point', color player')) }
 
 possibleInitialSettlements :: Player -> Board -> [GameAction]
 possibleInitialSettlements p b

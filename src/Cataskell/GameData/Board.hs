@@ -16,6 +16,9 @@ module Cataskell.GameData.Board
 , rolls
 , checkHexNeighbors
 , Board(..)
+, hexes
+, roads
+, buildings
 , newHexMap
 , emptyBuildingMap
 , emptyRoadMap
@@ -32,6 +35,7 @@ import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
 import Data.List ((\\))
+import Control.Lens
 import Data.Monoid
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, isJust, isNothing)
@@ -47,8 +51,8 @@ data HexCenter = HexCenter
  } deriving (Eq, Ord, Show, Read,Generic)
 
 type HexMap = Map.Map CentralPoint HexCenter
-type RoadMap = Map.Map UndirectedEdge (Maybe ActualRoad)
-type BuildingMap = Map.Map Point (Maybe ActualBuilding)
+type RoadMap = Map.Map UndirectedEdge (Maybe OnEdge)
+type BuildingMap = Map.Map Point (Maybe OnPoint)
 
 mkHexCenterUnsafe :: Terrain -> Int -> HexCenter
 mkHexCenterUnsafe t r = HexCenter { terrain = t
@@ -67,10 +71,12 @@ hexMapFromList :: [HexCenter] -> HexMap
 hexMapFromList = Map.fromList . zip hexCenterPoints
 
 data Board = Board
-  { hexes :: HexMap
-  , roads :: RoadMap
-  , buildings :: BuildingMap
+  { _hexes :: HexMap
+  , _roads :: RoadMap
+  , _buildings :: BuildingMap
   } deriving (Eq, Ord, Show, Read,Generic)
+
+makeLenses ''Board
 
 terrains :: [Terrain]
 terrains = hills ++ pastures ++ mountains ++ fields ++ forests
@@ -138,44 +144,44 @@ emptyRoadMap
 newBoard :: (RandomGen g) => Rand g Board
 newBoard = do
   hexMap <- newHexMap
-  return Board { hexes = hexMap
-               , roads = emptyRoadMap
-               , buildings = emptyBuildingMap }
+  return Board { _hexes = hexMap
+               , _roads = emptyRoadMap
+               , _buildings = emptyBuildingMap }
 
-getHabitations :: Board -> Map.Map Point ActualBuilding
+getHabitations :: Board -> Map.Map Point OnPoint
 getHabitations b
-  = Map.mapMaybe id $ buildings b
+  = Map.mapMaybe id $ view buildings b
 
 freePoints :: Board -> [Point]
 freePoints b
-  = let occupiedPoints = Map.keys . Map.filter (isJust) $ buildings b
+  = let occupiedPoints = Map.keys . Map.filter (isJust) $ view buildings b
         nns = concatMap (neighborPoints roadConnections) occupiedPoints
     in  allPoints \\ (occupiedPoints ++ nns)
 
 -- | Adjusts the board to add a building/road.
 -- | Checks that nothing was present (if settlement or road), or that a settlement
 -- | belonging to the player was there (if city). 
-build :: ActualBuilding -> Board -> Board
+build :: Construct -> Board -> Board
 build bldg brd
   = case bldg of
-      OnPoint (H Settlement p _) -> 
-        let buildings' = Map.adjust (\x -> if isNothing x then (Just bldg) else x) p (buildings brd) 
-        in brd { buildings = buildings'}
-      OnPoint (H City p c) -> 
-        let adjuster x = if x == (Just (OnPoint (H Settlement p c))) then (Just bldg) else x
-            buildings' = Map.adjust adjuster p (buildings brd) 
-        in brd { buildings = buildings'}
-      OnEdge r@(R Road e _) -> 
-        let roads' = Map.adjust (\x -> if isNothing x then (Just r) else x) e (roads brd) 
-        in brd { roads = roads'}    
+      Edifice bl@(OnPoint p _ Settlement) -> 
+        let buildings' = Map.adjust (\x -> if isNothing x then (Just bl) else x) p (brd ^. buildings) 
+        in buildings .~ buildings' $ brd
+      Edifice bl@(OnPoint p c City) -> 
+        let adjuster x = if x == Just (OnPoint p c Settlement) then (Just bl) else x
+            buildings' = Map.adjust adjuster p (brd ^. buildings) 
+        in buildings .~ buildings' $ brd
+      Roadway bl@(OnEdge e _) -> 
+        let roads' = Map.adjust (\x -> if isNothing x then (Just bl) else x) e (brd ^. roads)
+        in roads .~ roads' $ brd
 
 resourcesFromRoll :: Board -> Int -> Color -> ResourceCount
 resourcesFromRoll b r c = foldl ((<>)) mempty lst
-  where lst = map (\(b', r') -> if (habitationType b' == City) then mulResources r' 2 else r') bldgsRes
+  where lst = map (\(b', r') -> if (b'^.buildingType == City) then mulResources r' 2 else r') bldgsRes
         bldgsRes = Map.elems $ Map.intersectionWith (\bld hex -> (bld, getResForHex hex)) bldgs ptToHex
         getResForHex hC = let res = resource hC
                          in  if hasRobber hC then mempty else res
-        hexes' = Map.toList . Map.filter (\x -> roll x == r) $ hexes b
+        hexes' = Map.toList . Map.filter (\x -> roll x == r) $ (b ^. hexes)
         mkPtsToHex (k, v) = zip (neighborPoints resourceConnections $ fromCenter k) (repeat v)
         ptToHex = Map.fromList $ concatMap mkPtsToHex hexes'
         bldgs = Map.filter (\x -> color x == c) $ getHabitations b

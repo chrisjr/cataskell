@@ -37,8 +37,8 @@ spec = do
             in (resCountNow + 1) == resCountAfter
  
     let c' = [ Card VictoryPoint
-             , Building (OnPoint (H Settlement undefined White))
-             , Building (OnPoint (H Settlement undefined White))]
+             , settlement $ Just (undefined, White)
+             , settlement $ Just (undefined, White)]
     let p2 = constructed .~ c' $ (mkPlayer (White, "No-One"))
     it "should have a score" $ do
       view score p2 `shouldBe` 3

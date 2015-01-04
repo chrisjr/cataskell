@@ -26,7 +26,7 @@ data Player = Player
   { _playerName :: String
   , _playerColor :: Color
   , _resources :: ResourceCount
-  , _constructed :: [ActualItem]
+  , _constructed :: [Item]
   , _bonuses :: [Bonus]
   } deriving (Eq, Show, Read,Ord, Generic)
 
@@ -40,7 +40,7 @@ mkPlayer (c, n) = Player
   { _playerName = n
   , _playerColor = c
   , _resources = mempty
-  , _constructed = []
+  , _constructed = initialItems
   , _bonuses = []
   }
 
@@ -50,7 +50,7 @@ mkPlayers = map mkPlayer . zip [Red, Blue, Orange, White]
 validPlayer :: Player -> Bool
 validPlayer p
   = let resourcesNonNegative = views resources nonNegative p
-        bldgs = catMaybes . map getBuildingFromItem $ (p ^. constructed)
+        bldgs = catMaybes . map (preview building) $ (p ^. constructed)
         allBuildingsColoredRight = all (== color p) . map color $ bldgs
     in resourcesNonNegative && allBuildingsColoredRight
 
