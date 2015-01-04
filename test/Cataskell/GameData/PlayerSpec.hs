@@ -7,14 +7,16 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 import Control.Lens hiding (elements)
+import Control.Exception (assert)
 
 import Cataskell.GameData.ResourcesSpec() -- get Arbitrary ResourceCount 
 
 instance Arbitrary Player where
   arbitrary = do
+    i <- elements [0..3]
     name <- elements ["1", "2", "3", "4"]
     color <- elements [Red, Blue, Orange, White]
-    let p = mkPlayer (color, name)
+    let p = mkPlayer (i, color, name)
     r <- arbitrary
     return $ resources .~ r $ p
 
@@ -24,7 +26,7 @@ main = hspec spec
 spec :: Spec
 spec = do
   describe "A Player" $ do
-    let p = mkPlayer (Blue, "Nobody")
+    let p = mkPlayer (0, Blue, "Nobody")
     it "has a name" $ do
       view playerName p `shouldBe` "Nobody"
     it "should begin with 0 resources" $ do
@@ -37,9 +39,9 @@ spec = do
             in (resCountNow + 1) == resCountAfter
  
     let c' = [ Card VictoryPoint
-             , settlement $ Just (undefined, White)
-             , settlement $ Just (undefined, White)]
-    let p2 = constructed .~ c' $ (mkPlayer (White, "No-One"))
+             , settlement $ Just (assert False undefined, White)
+             , settlement $ Just (assert False undefined, White)]
+    let p2 = constructed .~ c' $ (mkPlayer (2, White, "No-One"))
     it "should have a score" $ do
       view score p2 `shouldBe` 3
     it "should have a display score" $ do

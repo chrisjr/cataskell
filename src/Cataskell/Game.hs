@@ -7,6 +7,7 @@ import Control.Monad.Random
 import Control.Monad.State
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
+import Control.Exception (assert)
 import Data.Maybe (fromJust)
 import Data.List (findIndex)
 import Cataskell.GameData.Actions
@@ -53,8 +54,8 @@ newGame pNames = do
 runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
 runGame stModify game stdgen = evalRand (execStateT stModify game) stdgen
 
-findPlayer :: (RandomGen g) => Color -> GameStateReturning g Int
-findPlayer c = do
+findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g Int
+findPlayerByColor c = do
   maybeI <- uses players $ findIndex ((== c) . color)
   return $ fromJust maybeI
 
@@ -65,23 +66,18 @@ update action' = do
     Initial ->
       updateInitial action'
     Normal ->
-      undefined
+      assert False undefined
     RobberAttack ->
-      undefined
+      assert False undefined
     MovingRobber ->
-      undefined
+      assert False undefined
     End ->
-      undefined
+      assert False undefined
 
 updateInitial :: (RandomGen g) => GameAction -> GameState g
 updateInitial action' = do
-  totalPlayers <- uses players length
-  let lastPlayerIndex = totalPlayers - 1
-  currentIndex <- use currentPlayer
-
-  when (lastPlayerIndex == currentIndex) $ turnAdvanceBy .= -1
-
   checkAndExecute action'
+  progress
 
 checkAndExecute :: (RandomGen g) => GameAction -> GameState g
 checkAndExecute action' = do
@@ -97,10 +93,33 @@ isValid action' = do
 
 -- | Returns a series of predicates that must be true for an action to proceed
 preconditions :: GameAction -> [Game -> Bool]
-preconditions = undefined
+preconditions = assert False undefined
 
 doAction :: (RandomGen g) => GameAction -> GameState g
-doAction = undefined
+doAction act'
+  = let action' = act' ^. action
+        actor'  = act' ^. actor
+    in  case action' of
+          Roll -> doRoll
+          BuildForFree c' -> doBuild actor' c'
+          Purchase x -> doPurchase actor' x
+          Trade x -> doTrade actor' x
+          Discard x -> doDiscard actor' x
+
+doBuild :: (RandomGen g) => Player -> Construct -> GameState g
+doBuild p' construct' = do
+  b <- use board
+  board .= build construct' b
+  players . ix (p' ^. playerIndex) . constructed <>= [Building construct']
+
+doPurchase :: (RandomGen g) => Player -> Item -> GameState g
+doPurchase = assert False undefined
+
+doTrade :: (RandomGen g) => Player -> TradeAction -> GameState g
+doTrade = assert False undefined
+
+doDiscard :: (RandomGen g) => Player -> DiscardAction -> GameState g
+doDiscard = assert False undefined
 
 doRoll :: (RandomGen g) => GameState g
 doRoll = do
@@ -136,6 +155,7 @@ progress = do
     RobberAttack -> return () -- if progress called when robber attacks, do nothing
     MovingRobber -> return () -- if progress called when moving robber, do nothing
     End -> return ()
+
 -- * State transitions
 
 updateForRoll :: (RandomGen g) => GameState g
@@ -151,7 +171,7 @@ distributeResources = do
   colorResUpdates <- uses board (allResourcesFromRoll $ fromJust r')
   forM_ (Map.toList colorResUpdates)
         (\(c, res) -> do
-          i <- findPlayer c
+          i <- findPlayerByColor c
           players . ix i . resources <>= res)
 
 
@@ -182,3 +202,11 @@ wonBy :: (RandomGen g) => Player -> GameState g
 wonBy p = do
   phase .= End
   winner .= Just p
+
+-- | Choose a valid action at random (useful for testing purposes)
+randomAct :: (RandomGen g) => GameState g
+randomAct = do
+  vA <- use validActions
+  act' <- uniform vA
+  doAction act'
+  progress

@@ -81,7 +81,7 @@ mkFree player' construct' = PlayerAction { _actor = player'
                                          , _action = BuildForFree construct' }
 
 mkSettlement :: (Player, Point) -> Construct
-mkSettlement = undefined
+mkSettlement (player', p') = built . settlement $ Just (p', color player')
 
 possibleInitialSettlements :: Player -> Board -> [GameAction]
 possibleInitialSettlements p b

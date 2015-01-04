@@ -46,12 +46,12 @@ spec = do
   describe "A new game" $ do
     it "should start in the Initial phase" $ property $
       \g -> (view phase $ fromInitialGame (g :: InitialGame)) == Initial
-  describe "Any Game" $ do
+  describe "Game invariants" $ do
     it "must have either 3 or 4 players" $ property $
       \game -> let l = length $ view players (game :: Game)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
-      \game stdGen -> let i = evalRand (evalStateT (findPlayer Blue) (game :: Game)) (stdGen :: StdGen)
+      \game stdGen -> let i = evalRand (evalStateT (findPlayerByColor Blue) (game :: Game)) (stdGen :: StdGen)
                       in i >= 0 && i < 4
     it "has a list of valid next actions, except at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
@@ -61,35 +61,35 @@ spec = do
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores
                in  (fst highestCount >= 10) == (snd highestCount == 1)
 
-  describe "The update function" $ do
+  describe "An example game" $ do
 
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
+
+    let gs = iterate (\(x, r) -> runRand (execStateT randomAct x) r) (initialGame, r')
+    let (normalGame, _) = gs !! 8
+
     context "in Initial phase" $ do
       it "should initially allow a settlement built anywhere" $ do
         let valids = view validActions initialGame
         length valids `shouldBe` 54
-
-      let gs = iterate (\x -> runGame progress x r') initialGame
       context "when cycling through players forward then back" $ do
         let playerIs = [0, 1, 2, 3, 3, 2, 1, 0]
 
-        forM_ (zip playerIs gs) $ \(i, g) ->
-          it ("should permit placement for player " ++ (show i)) $ do
-            view currentPlayer g `shouldBe` i
-            views validActions length g `shouldBe` 54
-
+        forM_ (zip3 [0..] playerIs (map fst gs)) $ \(i, c, g) ->
+          it ("should permit placement for player " ++ (show c)) $ do
+            view currentPlayer g `shouldBe` c
+            views validActions length g `shouldSatisfy` (<= (54 - (i * 3))) 
       it "should transition to Normal phase when placements are complete" $ do
-        let g = gs !! 8
-        view phase g `shouldBe` Normal
-        views validActions length g `shouldBe` 1
+        view phase normalGame `shouldBe` Normal
+        views validActions length normalGame `shouldBe` 1
 
-    let normalGame = runGame initialToNormal initialGame (mkStdGen 0)
     context "in Normal phase" $ do
       it "should start each turn with a roll" $ do
-        let vA = evalState (use validActions) normalGame
-        let p1 = evalState (uses players head) normalGame
+        let vA = view validActions normalGame
+        let p1 = views players head normalGame
         vA `shouldBe` [rollFor p1]
       it "should distribute resources once a roll happens" $ do
+        let (rolled, _) = gs !! 9
         pending
       it "should allow for trade offers" $ do
         pending

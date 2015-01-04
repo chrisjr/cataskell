@@ -4,6 +4,7 @@ import Test.Hspec
 import Test.QuickCheck
 import Data.Maybe (isJust)
 import Control.Lens hiding (elements)
+import Control.Exception (assert)
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 
@@ -11,7 +12,7 @@ import Cataskell.GameData.LocationSpec()
 import Cataskell.BoardGraphSpec()
 
 instance Arbitrary Item where
-  arbitrary = undefined
+  arbitrary = assert False undefined
 
 instance Arbitrary Color where
   arbitrary = elements [Red, White, Orange, Blue]

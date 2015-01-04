@@ -27,7 +27,7 @@ main = hspec spec
 spec :: Spec
 spec = do
   describe "A PlayerAction" $ do
-    let pAction = PlayerAction { _actor = mkPlayer (Blue, "NoOne"), _action = Roll }
+    let pAction = PlayerAction { _actor = mkPlayer (0, Blue, "NoOne"), _action = Roll }
     it "should have an associated actor" $ do
       pAction ^. actor `shouldSatisfy` validPlayer
     it "should have an action" $ do
@@ -36,10 +36,10 @@ spec = do
     let oneWheat = (mempty { wheat = 1 }) :: ResourceCount
     let oneOre = (mempty { ore = 1 }) :: ResourceCount
     let offer' = TradeOffer { _offering = oneWheat, _asking = oneOre }
-    let p1 = resources .~ mempty { wheat = 2, ore = 2 } $ mkPlayer (Blue, "NoOne")
+    let p1 = resources .~ mempty { wheat = 2, ore = 2 } $ mkPlayer (1, Blue, "NoOne")
     let p1offer = mkOffer offer' p1
-    let p2 = resources .~ mempty { ore = 3 } $ mkPlayer (White, "Nobody")
-    let p3 = mkPlayer (Orange, "Nadie")
+    let p2 = resources .~ mempty { ore = 3 } $ mkPlayer (2, White, "Nobody")
+    let p3 = mkPlayer (3, Orange, "Nadie")
 
     describe "A TradeOffer" $ do
       it "should have an offering and asking amount" $ do

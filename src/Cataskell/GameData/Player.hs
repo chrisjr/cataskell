@@ -4,6 +4,7 @@
 module Cataskell.GameData.Player
 ( Player
 , playerName
+, playerIndex
 , resources
 , constructed
 , bonuses
@@ -25,6 +26,7 @@ import GHC.Generics (Generic)
 data Player = Player
   { _playerName :: String
   , _playerColor :: Color
+  , _playerIndex :: Int
   , _resources :: ResourceCount
   , _constructed :: [Item]
   , _bonuses :: [Bonus]
@@ -35,17 +37,18 @@ makeLenses ''Player
 instance Colored Player where
   color = view playerColor
 
-mkPlayer :: (Color, String) -> Player
-mkPlayer (c, n) = Player
+mkPlayer :: (Int, Color, String) -> Player
+mkPlayer (i, c, n) = Player
   { _playerName = n
   , _playerColor = c
+  , _playerIndex = i
   , _resources = mempty
   , _constructed = initialItems
   , _bonuses = []
   }
 
 mkPlayers :: [String] -> [Player]
-mkPlayers = map mkPlayer . zip [Red, Blue, Orange, White]
+mkPlayers = map mkPlayer . zip3 [0..] [Red, Blue, Orange, White]
 
 validPlayer :: Player -> Bool
 validPlayer p
