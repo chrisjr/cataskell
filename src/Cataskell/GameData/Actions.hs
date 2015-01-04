@@ -74,9 +74,14 @@ mkDiscard (p, currentTotal)
                  }
 
 mkInitialSettlement :: (Player, Point) -> GameAction
-mkInitialSettlement (player', point')
-  = PlayerAction { _actor = player'
-                 , _action = BuildForFree (built . settlement $ Just (point', color player')) }
+mkInitialSettlement (pl', p) = mkFree pl' $ mkSettlement (pl', p)
+
+mkFree :: Player -> Construct -> GameAction
+mkFree player' construct' = PlayerAction { _actor = player'
+                                         , _action = BuildForFree construct' }
+
+mkSettlement :: (Player, Point) -> Construct
+mkSettlement = undefined
 
 possibleInitialSettlements :: Player -> Board -> [GameAction]
 possibleInitialSettlements p b

@@ -109,6 +109,8 @@ spec = do
                   in  l == 51 || l == 50 -- at least 3 points now off limits, possibly 4
     it "can be queried for colors affected by a roll" $ do
       let board = evalRand newBoard $ mkStdGen 0
+      -- print $ Map.filter ((== 6) . roll) (board ^. hexes)
       let bldg = built . settlement $ Just ((Point (0,0) Top), Blue)
       let board' = build bldg board
-      resourcesFromRoll board' 6 Blue `shouldBe` mempty { ore = 1 }
+      let res' = allResourcesFromRoll 6 board'
+      res' `shouldBe` Map.singleton Blue mempty { ore = 1 }

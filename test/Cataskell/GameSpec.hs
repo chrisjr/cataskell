@@ -8,6 +8,7 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
 import Cataskell.GameData.Player
 import Control.Monad.Random
+import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
 import Data.Maybe (fromJust)
@@ -35,6 +36,8 @@ instance Arbitrary InitialGame where
     names <- elements [["1", "2", "3"], ["1", "2", "3", "4"]]
     return $ toInitialGame $ evalRand (newGame names) stdGen
 
+-- newtype GameStateStd = GameStateStd (StateT Game (RandT StdGen Identity) ())
+
 main :: IO ()
 main = hspec spec
 
@@ -48,8 +51,8 @@ spec = do
       \game -> let l = length $ view players (game :: Game)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
-      \game -> let p = getPlayer Blue (game :: Game)
-               in validPlayer $ fromJust p
+      \game stdGen -> let i = evalRand (evalStateT (findPlayer Blue) (game :: Game)) (stdGen :: StdGen)
+                      in i >= 0 && i < 4
     it "has a list of valid next actions, except at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
                in (n > 0) || (view phase game == End)
@@ -60,7 +63,7 @@ spec = do
 
   describe "The update function" $ do
 
-    let initialGame = evalRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
+    let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
     context "in Initial phase" $ do
       it "should initially allow a settlement built anywhere" $ do
         let valids = view validActions initialGame
@@ -78,6 +81,8 @@ spec = do
         let vA = evalState (use validActions) normalGame
         let p1 = evalState (uses players head) normalGame
         vA `shouldBe` [rollFor p1]
+      it "should distribute resources once a roll happens" $ do
+        pending
       it "should allow for trade offers" $ do
         pending
       it "should allow for building, according to resources" $ do

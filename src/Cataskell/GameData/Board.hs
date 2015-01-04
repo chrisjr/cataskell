@@ -25,7 +25,7 @@ module Cataskell.GameData.Board
 , newBoard
 , freePoints
 , build
-, resourcesFromRoll
+, allResourcesFromRoll
 ) where
 
 
@@ -175,13 +175,16 @@ build bldg brd
         let roads' = Map.adjust (\x -> if isNothing x then (Just bl) else x) e (brd ^. roads)
         in roads .~ roads' $ brd
 
-resourcesFromRoll :: Board -> Int -> Color -> ResourceCount
-resourcesFromRoll b r c = foldl ((<>)) mempty lst
-  where lst = map (\(b', r') -> if (b'^.buildingType == City) then mulResources r' 2 else r') bldgsRes
+allResourcesFromRoll :: Int -> Board -> Map.Map Color ResourceCount
+allResourcesFromRoll r b = colorSums
+  where colorSums = foldl (Map.unionWith (<>)) (Map.empty :: Map.Map Color ResourceCount) maps
+        maps = map (uncurry Map.singleton) lst
+        lst = map (\(b', r') -> let r'' = if (b'^.buildingType == City) then mulResources r' 2 else r'
+                                in (color b', r'')) bldgsRes
         bldgsRes = Map.elems $ Map.intersectionWith (\bld hex -> (bld, getResForHex hex)) bldgs ptToHex
         getResForHex hC = let res = resource hC
-                         in  if hasRobber hC then mempty else res
-        hexes' = Map.toList . Map.filter (\x -> roll x == r) $ (b ^. hexes)
+                          in  if hasRobber hC then mempty else res
+        hexes' = Map.toList . Map.filter ((==r) . roll) $ (b ^. hexes)
         mkPtsToHex (k, v) = zip (neighborPoints resourceConnections $ fromCenter k) (repeat v)
         ptToHex = Map.fromList $ concatMap mkPtsToHex hexes'
-        bldgs = Map.filter (\x -> color x == c) $ getHabitations b
+        bldgs = getHabitations b

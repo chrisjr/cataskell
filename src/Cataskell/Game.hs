@@ -6,7 +6,9 @@ import Control.Monad.Identity
 import Control.Monad.Random
 import Control.Monad.State
 import System.Random.Shuffle
-import Data.Maybe (listToMaybe)
+import qualified Data.Map.Strict as Map
+import Data.Maybe (fromJust)
+import Data.List (findIndex)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -51,8 +53,10 @@ newGame pNames = do
 runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
 runGame stModify game stdgen = evalRand (execStateT stModify game) stdgen
 
-getPlayer :: Color -> Game -> Maybe Player
-getPlayer c gs = listToMaybe . filter (\p -> color p == c) $ gs ^. players
+findPlayer :: (RandomGen g) => Color -> GameStateReturning g Int
+findPlayer c = do
+  maybeI <- uses players $ findIndex ((== c) . color)
+  return $ fromJust maybeI
 
 update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
@@ -100,10 +104,50 @@ doAction = undefined
 
 doRoll :: (RandomGen g) => GameState g
 doRoll = do
-  r <- getRandomR (1, 6)
-  rolled .= (Just r)
+  d1 <- getRandomR (1, 6)
+  d2 <- getRandomR (1, 6)
+  let r' = d1 + d2
+  rolled .= (Just r')
+  updateForRoll
 
+-- | Called on EndTurn action
+progress :: (RandomGen g) => GameState g
+progress = do
+  current <- use currentPlayer
+  adv <- use turnAdvanceBy
+  totalPlayers <- uses players length
+  p <- use phase
+  let next' = (totalPlayers + current + adv) `mod` totalPlayers 
+  nextPlayer <- uses players ((flip (!!)) next')
+  nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
+  case p of
+    Initial -> sequence_ $
+      [ currentPlayer .= next'
+      , validActions .= nextActionsIfInitial ]
+    Normal -> sequence_ $
+      [ currentPlayer .= next'
+      , validActions .= [rollFor nextPlayer]]
+    RobberAttack -> return ()
+    MovingRobber -> return ()
+    End -> return ()
 -- * State transitions
+
+updateForRoll :: (RandomGen g) => GameState g
+updateForRoll = do
+  r' <- use rolled
+  case r' of
+    Just 7 -> toRobberAttack
+    _ -> distributeResources
+
+distributeResources :: (RandomGen g) => GameState g
+distributeResources = do
+  r' <- use rolled
+  colorResUpdates <- uses board (allResourcesFromRoll $ fromJust r')
+  forM_ (Map.toList colorResUpdates)
+        (\(c, res) -> do
+          i <- findPlayer c
+          players . ix i . resources <>= res)
+
 
 -- | Move to Normal phase (from Initial)
 initialToNormal :: (RandomGen g) => GameState g
