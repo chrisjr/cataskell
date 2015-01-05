@@ -8,8 +8,8 @@ import Control.Monad.State
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Control.Exception (assert)
-import Data.Maybe (fromJust)
-import Data.List (findIndex)
+import Data.Maybe (fromJust, isJust)
+import Data.List (findIndex, elemIndex)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -21,7 +21,7 @@ import GHC.Generics (Generic)
 type GameState g = StateT Game (RandT g Identity) ()
 type GameStateReturning g = StateT Game (RandT g Identity)
 
-data Phase = Initial | Normal | RobberAttack | MovingRobber | End
+data Phase = Initial | Normal | RobberAttack | MovingRobber | FreeRoads | End
   deriving (Eq, Ord, Show, Read, Generic)
 
 data Game = Game
@@ -71,18 +71,21 @@ update action' = do
       assert False undefined
     MovingRobber ->
       assert False undefined
+    FreeRoads ->
+      assert False undefined    
     End ->
       assert False undefined
 
 updateInitial :: (RandomGen g) => GameAction -> GameState g
 updateInitial action' = do
-  checkAndExecute action'
-  progress
+  done <- checkAndExecute action'
+  when (done && isJust (action' ^? action.construct.onEdge)) progress
 
-checkAndExecute :: (RandomGen g) => GameAction -> GameState g
+checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 checkAndExecute action' = do
   valid <- isValid action'
   when (valid) $ doAction action'
+  return valid
 
 isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 isValid action' = do
@@ -93,7 +96,18 @@ isValid action' = do
 
 -- | Returns a series of predicates that must be true for an action to proceed
 preconditions :: GameAction -> [Game -> Bool]
-preconditions = assert False undefined
+preconditions (PlayerAction player' action')
+  = case action' of
+      Roll -> []
+      BuildForFree _ -> [\g -> let p' = view phase g
+                               in (p' == Initial) || (p' == FreeRoads)]
+      PlayCard x -> [\g -> let pI = player'^.playerIndex
+                               items' = view (players.(ix pI).constructed) g
+                           in  isJust $ elemIndex (Card x) items']
+      Purchase _ -> []
+      Trade _ -> []
+      Discard _ -> []
+      EndTurn -> []
 
 doAction :: (RandomGen g) => GameAction -> GameState g
 doAction act'
@@ -101,16 +115,59 @@ doAction act'
         actor'  = act' ^. actor
     in  case action' of
           Roll -> doRoll
-          BuildForFree c' -> doBuild actor' c'
+          BuildForFree c' -> do
+            doBuild actor' c'
+            let totalSettlements = length . filter isSettlement $ actor' ^. constructed
+            if (deconstruct c' == Potential (H Settlement))
+            then do
+              when (totalSettlements == 2) $ giveStartingResources actor'
+              let c'' = fromJust $ c' ^? onPoint
+              newRoads <- uses (board.roads) (initialRoadsFor actor' c'')
+              validActions .= newRoads
+            else return ()
           Purchase x -> doPurchase actor' x
           Trade x -> doTrade actor' x
           Discard x -> doDiscard actor' x
+          PlayCard x -> doPlayCard actor' x
+          EndTurn -> progress
 
+
+giveStartingResources :: (RandomGen g) => Player -> GameState g
+giveStartingResources player' = do
+  let pI = player' ^. playerIndex
+  hasBuilt <- use (players . ix pI . constructed)
+  let lastSettlement = last . filter isSettlement $ hasBuilt
+  let p' = fromJust $ lastSettlement ^? building.onPoint
+  b <- use board
+  let res = allStartingResources p' b
+  addToResources pI res
+
+-- | Find an appropriate construct in the player inventory and, if it exists,
+-- | execute the build request; otherwise do nothing.
 doBuild :: (RandomGen g) => Player -> Construct -> GameState g
 doBuild p' construct' = do
+  let potential = deconstruct construct'
   b <- use board
-  board .= build construct' b
-  players . ix (p' ^. playerIndex) . constructed <>= [Building construct']
+  replaceInventory p' potential (Just $ Building construct') $ do
+    board .= build construct' b
+
+replaceInventory :: (RandomGen g) => Player -> Item -> Maybe Item -> GameState g -> GameState g
+replaceInventory p' old' new' extraActions = do
+  hasLeft <- use (players . ix (p' ^. playerIndex) . constructed)
+  let i = elemIndex old' hasLeft
+  if (isJust i)
+  then do
+    let i' = fromJust i
+    if (isJust new')
+    then do
+      players . ix (p' ^. playerIndex) . constructed . ix i' .= fromJust new'
+    else do
+      players . ix (p' ^. playerIndex) . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
+    extraActions
+  else return ()
+
+addToResources :: (RandomGen g) => Int -> ResourceCount -> GameState g
+addToResources i res = players . ix i . resources <>= res
 
 doPurchase :: (RandomGen g) => Player -> Item -> GameState g
 doPurchase = assert False undefined
@@ -120,6 +177,22 @@ doTrade = assert False undefined
 
 doDiscard :: (RandomGen g) => Player -> DiscardAction -> GameState g
 doDiscard = assert False undefined
+
+doPlayCard :: (RandomGen g) => Player -> DevelopmentCard -> GameState g
+doPlayCard player' card' = do
+  replaceInventory player' (Card card') Nothing $ do
+    case card' of
+      RoadBuilding -> toRoadBuilding player'
+      Knight -> assert False undefined
+      Invention -> assert False undefined
+      Monopoly -> assert False undefined
+      VictoryPoint -> return ()
+
+toRoadBuilding :: (RandomGen g) => Player -> GameState g
+toRoadBuilding player' = do
+  phase .= FreeRoads
+  possibleRoads <- uses board (validRoadsFor $ color player')
+  validActions .= map (mkFree player') possibleRoads
 
 doRoll :: (RandomGen g) => GameState g
 doRoll = do
@@ -149,12 +222,16 @@ progress = do
                       [ currentPlayer .= next'
                       , validActions .= nextActionsIfInitial
                       , turnAdvanceBy .= newAdv next' ]
-    Normal -> sequence_ $
-      [ currentPlayer .= next'
-      , validActions .= [rollFor nextPlayer]]
+    Normal -> switchToPlayer next' [rollFor nextPlayer]
     RobberAttack -> return () -- if progress called when robber attacks, do nothing
     MovingRobber -> return () -- if progress called when moving robber, do nothing
+    FreeRoads -> switchToPlayer next' [rollFor nextPlayer]
     End -> return ()
+
+switchToPlayer :: (RandomGen g) => Int -> [GameAction] -> GameState g
+switchToPlayer i valids = do
+  currentPlayer .= i
+  validActions .= valids
 
 -- * State transitions
 
@@ -172,7 +249,7 @@ distributeResources = do
   forM_ (Map.toList colorResUpdates)
         (\(c, res) -> do
           i <- findPlayerByColor c
-          players . ix i . resources <>= res)
+          addToResources i res)
 
 
 -- | Move to Normal phase (from Initial)
@@ -208,5 +285,4 @@ randomAct :: (RandomGen g) => GameState g
 randomAct = do
   vA <- use validActions
   act' <- uniform vA
-  doAction act'
-  progress
+  update act'

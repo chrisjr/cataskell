@@ -23,6 +23,8 @@ module Cataskell.GameData.Basics
 , city
 , road
 , devCard
+, deconstruct
+, isSettlement
 , isVictoryPoint
 , Terrain(..)
 , Harbor(..)
@@ -122,6 +124,17 @@ devCard :: Maybe DevelopmentCard -> Item
 devCard  x = case x of
   Just d -> Card d
   Nothing -> Potential DevelopmentCard
+
+deconstruct :: Construct -> Item
+deconstruct c'
+  = case c' of
+      Edifice (OnPoint _ _ h) -> Potential (H h)
+      Roadway (OnEdge _ _) -> Potential Road
+
+isSettlement :: Item -> Bool
+isSettlement item' = case item' of
+  Building (Edifice (OnPoint _ _ Settlement)) -> True
+  _ -> False
 
 isVictoryPoint :: Item -> Bool
 isVictoryPoint x = case (x ^? card) of

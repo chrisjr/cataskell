@@ -11,6 +11,7 @@ import Cataskell.GameData.Player
 
 import Control.Lens
 import Data.Monoid (mempty)
+import qualified Data.Map.Strict as Map
 import Control.Exception (assert)
 import GHC.Generics (Generic)
 
@@ -49,9 +50,11 @@ makeLenses ''DiscardAction
 data PlayerAction
   = Roll
   | BuildForFree { _construct :: Construct }
+  | PlayCard { _card :: DevelopmentCard }
   | Purchase { _item :: Item }
   | Trade { _trade :: TradeAction }
   | Discard { _discarding :: DiscardAction }
+  | EndTurn
   deriving (Eq, Show, Read,Ord, Generic)
 
 makeLenses ''PlayerAction
@@ -87,6 +90,13 @@ possibleInitialSettlements :: Player -> Board -> [GameAction]
 possibleInitialSettlements p b
   = let ps = freePoints b
     in  map mkInitialSettlement $ zip (repeat p) ps
+
+initialRoadsFor :: Player -> OnPoint -> RoadMap -> [GameAction]
+initialRoadsFor player' o' roads'
+  = let point' = o' ^.point
+        roadEdges = filter (\k -> point1 k == point' || point2 k == point') $ Map.keys roads' 
+        c' = color player'
+    in  map (\e -> mkFree player' $ built . road $ Just (e,c')) roadEdges
 
 -- | Enough resources for something
 enoughFor :: Maybe ResourceCount -> Player -> Maybe Bool

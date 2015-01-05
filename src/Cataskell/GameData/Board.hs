@@ -26,6 +26,8 @@ module Cataskell.GameData.Board
 , freePoints
 , build
 , allResourcesFromRoll
+, allStartingResources
+, validRoadsFor
 ) where
 
 
@@ -38,7 +40,7 @@ import Data.List ((\\))
 import Control.Lens
 import Data.Monoid
 import qualified Data.Map.Strict as Map
-import Data.Maybe (catMaybes, isJust, isNothing)
+import Data.Maybe (catMaybes, listToMaybe, isJust, isNothing)
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -175,16 +177,33 @@ build bldg brd
         let roads' = Map.adjust (\x -> if isNothing x then (Just bl) else x) e (brd ^. roads)
         in roads .~ roads' $ brd
 
+getPointsToHexCentersMap :: Board -> Map.Map Point [HexCenter]
+getPointsToHexCentersMap b = ptsToHexes
+  where ptsToHexes = Map.unionsWith (++) $ concatMap mkPtToHCs hexes'
+        mkPtToHCs (k, hC') = map (\x -> Map.singleton x [hC']) $ around k
+        around = neighborPoints resourceConnections
+        hexes' = Map.toList . Map.mapKeys fromCenter $ b ^. hexes
+
 allResourcesFromRoll :: Int -> Board -> Map.Map Color ResourceCount
 allResourcesFromRoll r b = colorSums
   where colorSums = foldl (Map.unionWith (<>)) (Map.empty :: Map.Map Color ResourceCount) maps
         maps = map (uncurry Map.singleton) lst
         lst = map (\(b', r') -> let r'' = if (b'^.buildingType == City) then mulResources r' 2 else r'
                                 in (color b', r'')) bldgsRes
-        bldgsRes = Map.elems $ Map.intersectionWith (\bld hex -> (bld, getResForHex hex)) bldgs ptToHex
+        bldgsRes = Map.elems $ Map.intersectionWith addUpRes bldgs ptsToHex
+        addUpRes bld nhs = (bld, foldl (<>) mempty $ map getResForHex nhs)
         getResForHex hC = let res = resource hC
                           in  if hasRobber hC then mempty else res
-        hexes' = Map.toList . Map.filter ((==r) . roll) $ (b ^. hexes)
-        mkPtsToHex (k, v) = zip (neighborPoints resourceConnections $ fromCenter k) (repeat v)
-        ptToHex = Map.fromList $ concatMap mkPtsToHex hexes'
+        ptsToHex = Map.filter ((> 0) . length) rollRelevant
+        rollRelevant = Map.map (filter ((== r) . roll)) $ getPointsToHexCentersMap b
         bldgs = getHabitations b
+
+allStartingResources :: OnPoint -> Board -> ResourceCount
+allStartingResources op' b = maybe mempty snd pointRes
+  where pointRes = listToMaybe $ Map.toList bldgRes
+        bldgRes = Map.intersectionWith (\_ hexes' -> foldl (<>) mempty $ map resource hexes') bldg ptsToHex
+        ptsToHex = getPointsToHexCentersMap b
+        bldg = Map.singleton (op'^.point) op'
+
+validRoadsFor :: Color -> Board -> [Construct]
+validRoadsFor = assert False undefined

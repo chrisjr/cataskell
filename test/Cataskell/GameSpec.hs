@@ -66,19 +66,19 @@ spec = do
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
 
     let gs = iterate (\(x, r) -> runRand (execStateT randomAct x) r) (initialGame, r')
-    let (normalGame, _) = gs !! 8
+    let (normalGame, _) = gs !! 16
 
     context "in Initial phase" $ do
       it "should initially allow a settlement built anywhere" $ do
         let valids = view validActions initialGame
         length valids `shouldBe` 54
       context "when cycling through players forward then back" $ do
-        let playerIs = [0, 1, 2, 3, 3, 2, 1, 0]
+        let playerIs = [0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 2, 2, 1, 1, 0, 0]
 
         forM_ (zip3 [0..] playerIs (map fst gs)) $ \(i, c, g) ->
           it ("should permit placement for player " ++ (show c)) $ do
             view currentPlayer g `shouldBe` c
-            views validActions length g `shouldSatisfy` (<= (54 - (i * 3))) 
+            views validActions length g `shouldSatisfy` (<= (54 - ((i `div` 2) * 3))) 
       it "should transition to Normal phase when placements are complete" $ do
         view phase normalGame `shouldBe` Normal
         views validActions length normalGame `shouldBe` 1
@@ -89,7 +89,7 @@ spec = do
         let p1 = views players head normalGame
         vA `shouldBe` [rollFor p1]
       it "should distribute resources once a roll happens" $ do
-        let (rolled, _) = gs !! 9
+        let (rolled, _) = gs !! 17
         pending
       it "should allow for trade offers" $ do
         pending
