@@ -84,10 +84,12 @@ hasItem :: Item -> Player -> (Game -> Bool)
 hasItem itemToFind player' = elem itemToFind . playerItems
   where playerItems = view (players.(ix (player'^.playerIndex)).constructed)
 
-hasResourcesFor :: Item -> Player -> (Game -> Bool)
-hasResourcesFor itemToBuy player' = (flip sufficient) cost' . playerResources
-  where cost' = cost itemToBuy
-        playerResources = view (players.(ix (player'^.playerIndex)).resources)
+hasResourcesFor :: ResourceCount -> Player -> (Game -> Bool)
+hasResourcesFor cost' player' = (flip sufficient) cost' . playerResources
+  where playerResources = view (players.(ix (player'^.playerIndex)).resources)
+
+hasResourcesForItem :: Item -> Player -> (Game -> Bool)
+hasResourcesForItem itemToBuy player' = hasResourcesFor (cost itemToBuy) player'
 
 -- | Returns a series of predicates that must be true for an action to proceed
 preconditions :: GameAction -> [Game -> Bool]
@@ -98,9 +100,18 @@ preconditions (PlayerAction player' action')
       PlayCard x -> [phaseOneOf [Normal],
                      hasItem (Card x) player']
       Purchase x -> [phaseOneOf [Normal],
-                     hasResourcesFor x player']
-      Trade _ -> []
-      Discard _ -> []
+                     hasResourcesForItem x player']
+      Trade x -> case x of
+        Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) player']
+        Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) player']
+        Reject _ _ _ -> [phaseOneOf [Normal]]
+        CompleteTrade offer' accepter' -> [ phaseOneOf [Normal]
+                                          , hasResourcesFor (offer'^.offering) player'
+                                          , hasResourcesFor (offer'^.asking) accepter']
+        CancelTrade _ -> [phaseOneOf [Normal]]
+        Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) player']
+      Discard (DiscardAction i r) -> [ phaseOneOf [RobberAttack]
+                                     , (\_ -> totalResources r == i) ]
       EndTurn -> []
 
 doAction :: (RandomGen g) => GameAction -> GameState g
@@ -124,7 +135,6 @@ doAction act'
           Discard x -> doDiscard actor' x
           PlayCard x -> doPlayCard actor' x
           EndTurn -> progress
-
 
 giveStartingResources :: (RandomGen g) => Player -> GameState g
 giveStartingResources player' = do

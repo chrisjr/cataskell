@@ -90,10 +90,10 @@ spec = do
         let p1 = views players head normalGame
         vA `shouldBe` [rollFor p1]
       it "should distribute resources once a roll happens" $ do
+        let totalAsOf g = sum . map (views resources totalResources) $ view players g
+        let (starting, _)  = gs !! 16
         let (rolled, _) = gs !! 17
-        let playersWithResources = view players rolled
-        let totals = map (views resources totalResources) playersWithResources
-        sum totals `shouldSatisfy` (> 0)
+        totalAsOf rolled `shouldSatisfy` (> (totalAsOf starting))
       it "should allow for trade offers" $ do
         pending
       it "should allow for building, according to resources" $ do
