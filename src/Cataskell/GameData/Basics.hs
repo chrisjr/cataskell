@@ -32,6 +32,7 @@ module Cataskell.GameData.Basics
 , Colored(..)
 , Bonus(..)
 , initialItems
+, allDevelopmentCards
 ) where
 
 import Cataskell.GameData.Location
@@ -156,6 +157,14 @@ initialItems = settlements ++ cities ++ roads
   where settlements = replicate 5 (Potential (H Settlement))
         cities = replicate 4 (Potential (H City))
         roads = replicate 15 (Potential Road)
+
+allDevelopmentCards :: [Item]
+allDevelopmentCards = knights ++ vps ++ roadBuilds ++ inventions ++ monopolies
+  where knights = replicate 14 (Card Knight)
+        vps = replicate 5 (Card VictoryPoint)
+        roadBuilds = replicate 2 (Card RoadBuilding)
+        inventions = replicate 2 (Card Invention)
+        monopolies = replicate 2 (Card Monopoly)
 
 instance Valuable Bonus where
   pointValue _ = 2

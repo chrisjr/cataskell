@@ -34,6 +34,7 @@ data Game = Game
   , _rolled :: Maybe Int
   , _validActions :: [GameAction]
   , _openTrades :: [TradeAction]
+  , _allCards :: [Item]
   , _winner :: Maybe PlayerIndex
   } deriving (Eq, Ord, Show, Read, Generic)
 
@@ -44,6 +45,7 @@ newGame :: (RandomGen g) => [String] -> Rand g Game
 newGame pNames = do
   b <- newBoard
   shuffledNames <- shuffleM pNames
+  cards <- shuffleM allDevelopmentCards
   let ps = mkPlayers shuffledNames
   return $ Game { _phase = Initial 
                 , _board = b
@@ -53,6 +55,7 @@ newGame pNames = do
                 , _rolled = Nothing
                 , _validActions = possibleInitialSettlements (head ps) b
                 , _openTrades = []
+                , _allCards = cards
                 , _winner = Nothing }
 
 runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
@@ -217,7 +220,11 @@ doPurchase playerIndex' item' = do
     Potential Road -> return () -- can't buy potential road without location
 
 getCard :: (RandomGen g) => PlayerIndex -> GameState g
-getCard = assert False undefined
+getCard playerIndex' = do
+  allCards' <- use allCards
+  let (cardTop, restOfCards) = splitAt 1 allCards'
+  players . (ix $ fromPlayerIndex playerIndex') . constructed <>= cardTop
+  allCards .= restOfCards
 
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade playerIndex' tradeAction' = do
