@@ -116,7 +116,8 @@ preconditions (PlayerAction playerIndex' action')
               , (\g -> view currentPlayer g == playerIndex')]
       BuildForFree _ -> [phaseOneOf [Initial, FreeRoads]]
       PlayCard x -> [ phaseOneOf [Normal]
-                    , hasItem (Card x) playerIndex']
+                    , hasItem (Card x) playerIndex'
+                    , (\_ -> x /= VictoryPoint)] -- can't play a victory point
       Purchase x -> [ phaseOneOf [Normal]
                     , hasResourcesForItem x playerIndex']
       Trade x -> case x of
@@ -196,7 +197,23 @@ addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
 addToResources i res = players . ix (fromPlayerIndex i) . resources <>= res
 
 doPurchase :: (RandomGen g) => PlayerIndex -> Item -> GameState g
-doPurchase = assert False undefined
+doPurchase playerIndex' item' = do
+  case item' of
+    (Building r@(Roadway (OnEdge _ _))) ->
+      replaceInventory playerIndex' (deconstruct r) (Just item') $ return ()
+    (Building s@(Edifice (OnPoint _ _ Settlement))) ->
+      replaceInventory playerIndex' (deconstruct s) (Just item') $ return ()
+    (Building c@(Edifice (OnPoint p' c' City))) ->
+      replaceInventory playerIndex' (deconstruct c) (Just item') $ do
+        let settlementWas = Building (Edifice (OnPoint p' c' Settlement))
+        replaceInventory playerIndex' (settlementWas) (Just (unbuilt settlement)) $ return ()
+    Card _ -> getCard playerIndex'
+    Potential DevelopmentCard -> getCard playerIndex'
+    Potential (H _) -> return () -- can't buy potential settlement without location
+    Potential Road -> return () -- can't buy potential road without location
+
+getCard :: (RandomGen g) => PlayerIndex -> GameState g
+getCard = assert False undefined
 
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade = assert False undefined
@@ -209,7 +226,7 @@ doPlayCard playerIndex' card' = do
   replaceInventory playerIndex' (Card card') Nothing $ do
     case card' of
       RoadBuilding -> toRoadBuilding playerIndex'
-      Knight -> assert False undefined
+      Knight -> toMovingRobber
       Invention -> assert False undefined
       Monopoly -> assert False undefined
       VictoryPoint -> return ()
