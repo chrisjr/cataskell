@@ -80,7 +80,12 @@ findPlayerByColor c = do
 update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
   done <- checkAndExecute action'
-  when (done && isJust (action' ^? action.construct.onEdge)) progress
+  p <- use phase
+  let builtRoad = isJust (action' ^? action.construct.onEdge)
+  let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
+
+  when (done && p == Initial && builtRoad) progress
+  when (done && p == Special MovingRobber && movedRobber) backToNormal
 
 -- | Checks that the action is valid and executes it if so
 checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
@@ -317,7 +322,6 @@ doRoll = do
   d2 <- getRandomR (1, 6)
   let r' = d1 + d2
   rolled .= (Just r')
-  genPlayerActions
   updateForRoll
 
 genPlayerActions :: (RandomGen g) => GameState g
@@ -326,7 +330,7 @@ genPlayerActions = do
   purchases' <- possiblePurchases currentPlayerIndex
   trades <- possibleTradeActions currentPlayerIndex
   cardsToPlay <- possibleDevelopmentCards currentPlayerIndex
-  validActions .= purchases' ++ trades ++ cardsToPlay
+  validActions .= purchases' ++ trades ++ cardsToPlay ++ [mkEndTurn currentPlayerIndex]
 
 possiblePurchases :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possiblePurchases playerIndex' = do
@@ -354,7 +358,10 @@ possibleDevelopmentCards playerIndex' = do
   let cards' = catMaybes $ map (\x -> x ^? card) items'
   return $ map (mkPlayCard playerIndex') cards'
 
--- | Called on EndTurn action
+canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+canMoveRobberTo _ = return $ [] -- assert False undefined
+
+-- | Called on EndTurn action or in initial phase
 progress :: (RandomGen g) => GameState g
 progress = do
   currentPlayerIndex' <- use currentPlayer
@@ -394,7 +401,9 @@ updateForRoll = do
   currentPlayer' <- use currentPlayer
   case r' of
     Just 7 -> toSpecialPhase RobberAttack currentPlayer'
-    _ -> distributeResources
+    _ -> do
+      distributeResources
+      genPlayerActions
 
 distributeResources :: (RandomGen g) => GameState g
 distributeResources = do
@@ -412,6 +421,9 @@ initialToNormal = do
   phase .= Normal
   validActions .= [rollFor (toPlayerIndex 0)]
 
+backToNormal :: (RandomGen g) => GameState g
+backToNormal = genPlayerActions
+
 toSpecialPhase :: (RandomGen g) => SpecialPhase -> PlayerIndex -> GameState g
 toSpecialPhase special' playerIndex' = do
   phase .= Special special'
@@ -428,9 +440,15 @@ toSpecialPhase special' playerIndex' = do
         then do
           validActions .= mustDiscard
         else toSpecialPhase MovingRobber playerIndex'
-      MovingRobber -> assert False undefined
-      Inventing -> assert False undefined
-      Monopolizing -> assert False undefined
+      MovingRobber -> do
+        robberMoves <- canMoveRobberTo playerIndex'
+        if null robberMoves
+        then backToNormal
+        else validActions .= robberMoves
+      Inventing -> do
+        validActions .= map (invent playerIndex') possibleInventions
+      Monopolizing -> do
+        validActions .= map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
 
 -- | Game won by player p.
 wonBy :: (RandomGen g) => PlayerIndex -> GameState g

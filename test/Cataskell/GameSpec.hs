@@ -12,7 +12,7 @@ import Control.Monad.Random
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import Data.Monoid (mempty)
 import Control.Lens hiding (elements)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
@@ -113,9 +113,23 @@ spec = do
           let (g', r') = runGame (update pOffer) rolledOnce randRolled
           view openTrades g' `shouldBe` [Offer tradeOffer']
       it "should allow for building, according to resources" $ do
-        pending
+        let canBuildSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
+        let isCurrentPlayer p g = p^.playerIndex == view currentPlayer g
+        let isBuildSettlement x = isSettlement `fmap` (x ^? action.item) == Just True
+        let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g
+        let findSuitable g = findIndex suitable $ zip (view players g) (repeat g) 
+        let maybeGame = find (\(g, _) -> isJust $ findSuitable g) $ take 100 $ drop 16 gs
+        if isJust maybeGame
+        then do
+          let g' = fst $ fromJust maybeGame
+          let vA = view validActions g'
+          -- let suitablePI = toPlayerIndex findSuitable g' 
+          vA `shouldSatisfy` (any isBuildSettlement)
+        else fail "couldn't find a player with enough resources in 100 turns"
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
-        pending
+        let rolled7 = rolled .~ Just 7 $ rolledOnce
+        let (robbed', _) = runGame updateForRoll rolled7 randRolled
+        view phase robbed' `shouldBe` Special MovingRobber
       it "should transition to Special FreeRoads when a RoadBuilding card is played" $ do
         pending
       it "should transition to Special Inventing when an Invention card is played" $ do

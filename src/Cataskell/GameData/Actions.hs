@@ -51,11 +51,17 @@ makeLenses ''DiscardAction
 data Monopoly = MonopolyOn { _resourceType :: ResourceType }
   deriving (Eq, Ord, Show, Read, Generic)
 
+makeLenses ''Monopoly
+
 data Invention = InventionOf { _resourceCount :: ResourceCount }
   deriving (Eq, Ord, Show, Read, Generic)
 
+makeLenses ''Invention
+
 data MoveRobber = MoveRobber { _destination :: CentralPoint }
   deriving (Eq, Ord, Show, Read, Generic)
+
+makeLenses ''MoveRobber
 
 data SpecialAction
   = M { _monopoly :: Monopoly }
@@ -63,10 +69,12 @@ data SpecialAction
   | R { _moveRobber :: MoveRobber }
   deriving (Eq, Ord, Show, Read, Generic)
 
+makeLenses ''SpecialAction
+
 data PlayerAction
   = Roll
   | BuildForFree { _construct :: Construct }
-  | SpecialAction { _dev :: SpecialAction }
+  | SpecialAction { _specialAction :: SpecialAction }
   | PlayCard { _cardToPlay :: DevelopmentCard }
   | Purchase { _item :: Item }
   | Trade { _trade :: TradeAction }
@@ -176,3 +184,24 @@ rollFor :: PlayerIndex -> GameAction
 rollFor pI = PlayerAction
   { _actor = pI
   , _action = Roll }
+
+invent :: PlayerIndex -> ResourceCount -> GameAction
+invent playerIndex' res'
+  = let act' = SpecialAction . I $ InventionOf res'
+    in PlayerAction { _actor = playerIndex'
+                    , _action = act' }
+
+possibleInventions :: [ResourceCount]
+possibleInventions = resCounts
+  where resCounts = map (\(a,b,c,d,e) -> ResourceCount a b c d e) tuples
+        tuples = [ (a,b,c,d,e) | a <- is, b <- is, c <- is, d <- is, e <- is, sum [a,b,c,d,e] == 2]
+        is = [0..2]
+
+possibleMonopolies :: [SpecialAction]
+possibleMonopolies = map (M . MonopolyOn) resTypes
+  where resTypes = [Lumber, Ore, Wool, Wheat, Brick]
+
+mkEndTurn :: PlayerIndex -> GameAction
+mkEndTurn pI = PlayerAction
+  { _actor = pI
+  , _action = EndTurn }
