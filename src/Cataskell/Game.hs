@@ -28,11 +28,11 @@ data Game = Game
   { _phase :: Phase
   , _board :: Board
   , _players :: [Player]
-  , _currentPlayer :: Int
+  , _currentPlayer :: PlayerIndex
   , _turnAdvanceBy :: Int
   , _rolled :: Maybe Int
   , _validActions :: [GameAction]
-  , _winner :: Maybe Player
+  , _winner :: Maybe PlayerIndex
   } deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''Game
@@ -45,7 +45,7 @@ newGame pNames = do
   return $ Game { _phase = Initial 
                 , _board = b
                 , _players = ps
-                , _currentPlayer = 0
+                , _currentPlayer = toPlayerIndex 0
                 , _turnAdvanceBy = 1
                 , _rolled = Nothing
                 , _validActions = possibleInitialSettlements (head ps) b
@@ -54,22 +54,25 @@ newGame pNames = do
 runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
 runGame stModify game stdgen = evalRand (execStateT stModify game) stdgen
 
-findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g Int
+findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
   maybeI <- uses players $ findIndex ((== c) . color)
-  return $ fromJust maybeI
+  return $ toPlayerIndex $ fromJust maybeI
 
+-- | Move from one game state to the next
 update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
   done <- checkAndExecute action'
   when (done && isJust (action' ^? action.construct.onEdge)) progress
 
+-- | Checks that the action is valid and executes it if so
 checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 checkAndExecute action' = do
   valid <- isValid action'
   when (valid) $ doAction action'
   return valid
 
+-- | Returns true iff all preconditions are met
 isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 isValid action' = do
   current <- get
@@ -77,69 +80,88 @@ isValid action' = do
   let valid = and $ map ($ current) predicates'
   return valid
 
+-- | Creates a predicate that is true when a game is in one of the specified phases.
 phaseOneOf :: [Phase] -> (Game -> Bool)
 phaseOneOf phases = (flip elem) phases . view phase
 
-hasItem :: Item -> Player -> (Game -> Bool)
-hasItem itemToFind player' = elem itemToFind . playerItems
-  where playerItems = view (players.(ix (player'^.playerIndex)).constructed)
+-- | Creates a predicate that checks if a player has an item
+hasItem :: Item -> PlayerIndex -> (Game -> Bool)
+hasItem itemToFind pI = elem itemToFind . playerItems
+  where playerItems = view (players.(ix $ fromPlayerIndex pI).constructed)
 
-hasResourcesFor :: ResourceCount -> Player -> (Game -> Bool)
-hasResourcesFor cost' player' = (flip sufficient) cost' . playerResources
-  where playerResources = view (players.(ix (player'^.playerIndex)).resources)
+-- | Creates a predicate that checks if a player has enough resources for something.
+hasResourcesFor :: ResourceCount -> PlayerIndex -> (Game -> Bool)
+hasResourcesFor cost' pI = (flip sufficient) cost' . playerResources
+  where playerResources = view (players.(ix $ fromPlayerIndex pI).resources)
 
-hasResourcesForItem :: Item -> Player -> (Game -> Bool)
-hasResourcesForItem itemToBuy player' = hasResourcesFor (cost itemToBuy) player'
+-- | Creates a predicate that checks if a player has enough resources for an item.
+hasResourcesForItem :: Item -> PlayerIndex -> (Game -> Bool)
+hasResourcesForItem itemToBuy pI = hasResourcesFor (cost itemToBuy) pI
 
--- | Returns a series of predicates that must be true for an action to proceed
+getPlayer :: (RandomGen g) => PlayerIndex -> GameStateReturning g Player
+getPlayer pI = do
+  current <- get
+  return $ current ^?! players . (ix $ fromPlayerIndex pI)
+
+scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g Int
+scoreFor pI = do
+  player' <- getPlayer pI
+  return $ view score player'
+
+-- | Returns a series of predicates that must be true for an action to proceed.
 preconditions :: GameAction -> [Game -> Bool]
-preconditions (PlayerAction player' action')
+preconditions (PlayerAction playerIndex' action')
   = case action' of
-      Roll -> []
+      Roll -> [ phaseOneOf [Normal]
+              , (\g -> view currentPlayer g == playerIndex')]
       BuildForFree _ -> [phaseOneOf [Initial, FreeRoads]]
-      PlayCard x -> [phaseOneOf [Normal],
-                     hasItem (Card x) player']
-      Purchase x -> [phaseOneOf [Normal],
-                     hasResourcesForItem x player']
+      PlayCard x -> [ phaseOneOf [Normal]
+                    , hasItem (Card x) playerIndex']
+      Purchase x -> [ phaseOneOf [Normal]
+                    , hasResourcesForItem x playerIndex']
       Trade x -> case x of
-        Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) player']
-        Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) player']
+        Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
+        Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) playerIndex']
         Reject _ _ _ -> [phaseOneOf [Normal]]
-        CompleteTrade offer' accepter' -> [ phaseOneOf [Normal]
-                                          , hasResourcesFor (offer'^.offering) player'
-                                          , hasResourcesFor (offer'^.asking) accepter']
+        CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
+                                          , hasResourcesFor (offer'^.offering) playerIndex'
+                                          , hasResourcesFor (offer'^.asking) accepterIndex']
         CancelTrade _ -> [phaseOneOf [Normal]]
-        Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) player']
+        Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
       Discard (DiscardAction i r) -> [ phaseOneOf [RobberAttack]
                                      , (\_ -> totalResources r == i) ]
-      EndTurn -> []
+      EndTurn -> [phaseOneOf [Normal]]
 
 doAction :: (RandomGen g) => GameAction -> GameState g
 doAction act'
   = let action' = act' ^. action
-        actor'  = act' ^. actor
+        actorIndex  = act' ^. actor
     in  case action' of
           Roll -> doRoll
           BuildForFree c' -> do
-            doBuild actor' c'
-            let totalSettlements = length . filter isSettlement $ actor' ^. constructed
+            doBuild actorIndex c'
+            player' <- getPlayer actorIndex
+            let totalSettlements = length . filter isSettlement $ player' ^. constructed
             if (deconstruct c' == Potential (H Settlement))
             then do
-              when (totalSettlements == 2) $ giveStartingResources actor'
+              when (totalSettlements == 2) $ giveStartingResources actorIndex
               let c'' = fromJust $ c' ^? onPoint
-              newRoads <- uses (board.roads) (initialRoadsFor actor' c'')
+              newRoads <- uses (board.roads) (initialRoadsFor player' c'')
               validActions .= newRoads
             else return ()
-          Purchase x -> doPurchase actor' x
-          Trade x -> doTrade actor' x
-          Discard x -> doDiscard actor' x
-          PlayCard x -> doPlayCard actor' x
-          EndTurn -> progress
+          Purchase x -> doPurchase actorIndex x
+          Trade x -> doTrade actorIndex x
+          Discard x -> doDiscard actorIndex x
+          PlayCard x -> doPlayCard actorIndex x
+          EndTurn -> do
+            scoreIsNow <- scoreFor actorIndex
+            if scoreIsNow >= 10
+            then wonBy actorIndex
+            else progress
 
-giveStartingResources :: (RandomGen g) => Player -> GameState g
-giveStartingResources player' = do
-  let pI = player' ^. playerIndex
-  hasBuilt <- use (players . ix pI . constructed)
+giveStartingResources :: (RandomGen g) => PlayerIndex -> GameState g
+giveStartingResources pI = do
+  hasBuilt <- use (players . ix (fromPlayerIndex pI) . constructed)
   let lastSettlement = last . filter isSettlement $ hasBuilt
   let p' = fromJust $ lastSettlement ^? building.onPoint
   b <- use board
@@ -148,55 +170,56 @@ giveStartingResources player' = do
 
 -- | Find an appropriate construct in the player inventory and, if it exists,
 -- | execute the build request; otherwise do nothing.
-doBuild :: (RandomGen g) => Player -> Construct -> GameState g
+doBuild :: (RandomGen g) => PlayerIndex -> Construct -> GameState g
 doBuild p' construct' = do
   let potential = deconstruct construct'
   b <- use board
   replaceInventory p' potential (Just $ Building construct') $ do
     board .= build construct' b
 
-replaceInventory :: (RandomGen g) => Player -> Item -> Maybe Item -> GameState g -> GameState g
-replaceInventory p' old' new' extraActions = do
-  hasLeft <- use (players . ix (p' ^. playerIndex) . constructed)
+replaceInventory :: (RandomGen g) => PlayerIndex -> Item -> Maybe Item -> GameState g -> GameState g
+replaceInventory playerIndex' old' new' extraActions = do
+  hasLeft <- use (players . ix (fromPlayerIndex playerIndex') . constructed)
   let i = elemIndex old' hasLeft
   if (isJust i)
   then do
     let i' = fromJust i
     if (isJust new')
     then do
-      players . ix (p' ^. playerIndex) . constructed . ix i' .= fromJust new'
+      players . ix (fromPlayerIndex playerIndex') . constructed . ix i' .= fromJust new'
     else do
-      players . ix (p' ^. playerIndex) . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
+      players . ix (fromPlayerIndex playerIndex') . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
     extraActions
   else return ()
 
-addToResources :: (RandomGen g) => Int -> ResourceCount -> GameState g
-addToResources i res = players . ix i . resources <>= res
+addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
+addToResources i res = players . ix (fromPlayerIndex i) . resources <>= res
 
-doPurchase :: (RandomGen g) => Player -> Item -> GameState g
+doPurchase :: (RandomGen g) => PlayerIndex -> Item -> GameState g
 doPurchase = assert False undefined
 
-doTrade :: (RandomGen g) => Player -> TradeAction -> GameState g
+doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade = assert False undefined
 
-doDiscard :: (RandomGen g) => Player -> DiscardAction -> GameState g
+doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
 doDiscard = assert False undefined
 
-doPlayCard :: (RandomGen g) => Player -> DevelopmentCard -> GameState g
-doPlayCard player' card' = do
-  replaceInventory player' (Card card') Nothing $ do
+doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
+doPlayCard playerIndex' card' = do
+  replaceInventory playerIndex' (Card card') Nothing $ do
     case card' of
-      RoadBuilding -> toRoadBuilding player'
+      RoadBuilding -> toRoadBuilding playerIndex'
       Knight -> assert False undefined
       Invention -> assert False undefined
       Monopoly -> assert False undefined
       VictoryPoint -> return ()
 
-toRoadBuilding :: (RandomGen g) => Player -> GameState g
-toRoadBuilding player' = do
+toRoadBuilding :: (RandomGen g) => PlayerIndex -> GameState g
+toRoadBuilding playerIndex' = do
+  player' <- getPlayer playerIndex'
   phase .= FreeRoads
   possibleRoads <- uses board (validRoadsFor $ color player')
-  validActions .= map (mkFree player') possibleRoads
+  validActions .= map (mkFree playerIndex') possibleRoads
 
 doRoll :: (RandomGen g) => GameState g
 doRoll = do
@@ -209,30 +232,31 @@ doRoll = do
 -- | Called on EndTurn action
 progress :: (RandomGen g) => GameState g
 progress = do
-  current <- use currentPlayer
+  currentPlayerIndex' <- use currentPlayer
+  let currentPlayerIndex = fromPlayerIndex currentPlayerIndex'
   adv <- use turnAdvanceBy
   totalPlayers <- uses players length
   p <- use phase
-  let next' = (totalPlayers + current + adv) `mod` totalPlayers
+  let next' = toPlayerIndex $ (totalPlayers + currentPlayerIndex + adv) `mod` totalPlayers
   let newAdv x | x == 3 && adv == 1 = 0
                | x == 3 && adv == 0 = -1
                | otherwise = adv
-  nextPlayer <- uses players ((flip (!!)) next')
+  nextPlayer <- uses players ((flip (!!)) $ fromPlayerIndex next')
   nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
   case p of
-    Initial -> if (current == 0 && adv == -1) 
+    Initial -> if (currentPlayerIndex == 0 && adv == -1) 
                then initialToNormal
                else sequence_ $
                       [ currentPlayer .= next'
                       , validActions .= nextActionsIfInitial
-                      , turnAdvanceBy .= newAdv next' ]
-    Normal -> switchToPlayer next' [rollFor nextPlayer]
+                      , turnAdvanceBy .= newAdv (fromPlayerIndex next')]
+    Normal -> switchToPlayer next' [rollFor next']
     RobberAttack -> return () -- if progress called when robber attacks, do nothing
     MovingRobber -> return () -- if progress called when moving robber, do nothing
-    FreeRoads -> switchToPlayer next' [rollFor nextPlayer]
+    FreeRoads -> switchToPlayer next' [rollFor next']
     End -> return ()
 
-switchToPlayer :: (RandomGen g) => Int -> [GameAction] -> GameState g
+switchToPlayer :: (RandomGen g) => PlayerIndex -> [GameAction] -> GameState g
 switchToPlayer i valids = do
   currentPlayer .= i
   validActions .= valids
@@ -260,14 +284,13 @@ distributeResources = do
 initialToNormal :: (RandomGen g) => GameState g
 initialToNormal = do
   phase .= Normal
-  p <- (uses players head)
-  validActions .= [rollFor p]
+  validActions .= [rollFor (toPlayerIndex 0)]
 
 -- | When a 7 is rolled, move into RobberAttack. If no one has more than 7 resources, move on to MovingRobber.
 toRobberAttack :: (RandomGen g) => GameState g
 toRobberAttack = do
   ps <- use players
-  let pRes = map (\p -> (p, totalResources (p ^. resources))) ps
+  let pRes = map (\p -> (p^.playerIndex, totalResources (p ^. resources))) ps
   let mustDiscard = map mkDiscard $ filter (\(_, r) -> r > 7) pRes
   if (length mustDiscard > 0) then sequence_ [ validActions .= mustDiscard
                                              , phase .= RobberAttack ]
@@ -279,10 +302,10 @@ toMovingRobber = do
   phase .= MovingRobber
 
 -- | Game won by player p.
-wonBy :: (RandomGen g) => Player -> GameState g
-wonBy p = do
+wonBy :: (RandomGen g) => PlayerIndex -> GameState g
+wonBy pI = do
   phase .= End
-  winner .= Just p
+  winner .= Just pI
 
 -- | Choose a valid action at random (useful for testing purposes)
 randomAct :: (RandomGen g) => GameState g

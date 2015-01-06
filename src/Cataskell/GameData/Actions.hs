@@ -25,14 +25,14 @@ makeLenses ''TradeOffer
 data TradeAction
   = Offer { _offer :: TradeOffer }
   | Accept { _offer :: TradeOffer  -- ^ the offer in question
-           , _asker :: Player      -- ^ the original player who asked to trade
+           , _asker :: PlayerIndex      -- ^ the original player who asked to trade
            }
   | Reject { _offer :: TradeOffer     -- ^ the offer in question
-           , _asker :: Player         -- ^ the original player who asked to trade
+           , _asker :: PlayerIndex         -- ^ the original player who asked to trade
            , _reason :: Maybe String  -- ^ the optional reason for rejecting the trade
            }
   | CompleteTrade { _offer :: TradeOffer  -- ^ the offer to be completed
-                  , _accepter :: Player   -- ^ the player who accepted the trade of the original offerer
+                  , _accepter :: PlayerIndex   -- ^ the player who accepted the trade of the original offerer
                   }
   | CancelTrade { _offer :: TradeOffer }  -- ^ the offer being canceled
   | Exchange { _offer :: TradeOffer }     -- ^ exchange with any harbor benefits applied
@@ -60,16 +60,16 @@ data PlayerAction
 makeLenses ''PlayerAction
 
 data GameAction
-  = PlayerAction { _actor :: Player
+  = PlayerAction { _actor :: PlayerIndex
                  , _action :: PlayerAction }
   deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''GameAction
 
 -- | Create an empty Discard action
-mkDiscard :: (Player, Int) -> GameAction
-mkDiscard (p, currentTotal)
-  = PlayerAction { _actor = p
+mkDiscard :: (PlayerIndex, Int) -> GameAction
+mkDiscard (pI, currentTotal)
+  = PlayerAction { _actor = pI
                  , _action = Discard DiscardAction
                     { _amountToDiscard = currentTotal `div` 2
                     , _resourcesDiscarding = mempty 
@@ -77,26 +77,26 @@ mkDiscard (p, currentTotal)
                  }
 
 mkInitialSettlement :: (Player, Point) -> GameAction
-mkInitialSettlement (pl', p) = mkFree pl' $ mkSettlement (pl', p)
+mkInitialSettlement (player', p) = mkFree (player'^.playerIndex) $ mkSettlement (player', p)
 
-mkFree :: Player -> Construct -> GameAction
-mkFree player' construct' = PlayerAction { _actor = player'
-                                         , _action = BuildForFree construct' }
+mkFree :: PlayerIndex -> Construct -> GameAction
+mkFree pI construct' = PlayerAction { _actor = pI
+                                    , _action = BuildForFree construct' }
 
 mkSettlement :: (Player, Point) -> Construct
 mkSettlement (player', p') = built . settlement $ Just (p', color player')
 
 possibleInitialSettlements :: Player -> Board -> [GameAction]
-possibleInitialSettlements p b
+possibleInitialSettlements player' b
   = let ps = freePoints b
-    in  map mkInitialSettlement $ zip (repeat p) ps
+    in  map mkInitialSettlement $ zip (repeat player') ps
 
 initialRoadsFor :: Player -> OnPoint -> RoadMap -> [GameAction]
 initialRoadsFor player' o' roads'
   = let point' = o' ^.point
         roadEdges = filter (\k -> point1 k == point' || point2 k == point') $ Map.keys roads' 
         c' = color player'
-    in  map (\e -> mkFree player' $ built . road $ Just (e,c')) roadEdges
+    in  map (\e -> mkFree (player'^.playerIndex) $ built . road $ Just (e,c')) roadEdges
 
 -- | Enough resources for something
 enoughFor :: Maybe ResourceCount -> Player -> Maybe Bool
@@ -106,27 +106,27 @@ enoughFor amt p
 mkOffer :: TradeOffer -> Player -> GameAction
 mkOffer offer' p
   = PlayerAction
-      { _actor = p
+      { _actor = p^.playerIndex
       , _action = Trade (Offer offer') }
 
-accept :: (Monad m) => GameAction -> Player -> m GameAction
-accept act' accepter'
+accept :: (Monad m) => GameAction -> PlayerIndex -> m GameAction
+accept act' accepterI
   = let offer' = act' ^? action.trade.offer
     in case offer' of
       Just tradeOffer ->
         return PlayerAction
-          { _actor = accepter'
+          { _actor = accepterI
           , _action = Trade (Accept { _offer = tradeOffer
                                     , _asker = act' ^. actor }) }
       Nothing -> fail "Tried to accept something that wasn't an offer"
 
-reject :: (Monad m) => GameAction -> Player -> Maybe String -> m GameAction
-reject act' rejecter' maybeReason
+reject :: (Monad m) => GameAction -> PlayerIndex -> Maybe String -> m GameAction
+reject act' rejecterIndex maybeReason
   = let offer' = act' ^? action.trade.offer
     in case offer' of
       Just tradeOffer ->
         return PlayerAction
-          { _actor = rejecter'
+          { _actor = rejecterIndex
           , _action = Trade (Reject { _offer = tradeOffer
                                     , _asker = act' ^. actor 
                                     , _reason = maybeReason })
@@ -146,7 +146,7 @@ complete p1offer p2accept = do
                                       })
       }
 
-rollFor :: Player -> GameAction
-rollFor p = PlayerAction
-  { _actor = p
+rollFor :: PlayerIndex -> GameAction
+rollFor pI = PlayerAction
+  { _actor = pI
   , _action = Roll }

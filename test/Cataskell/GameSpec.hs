@@ -52,7 +52,8 @@ spec = do
       \game -> let l = length $ view players (game :: Game)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
-      \game stdGen -> let i = evalRand (evalStateT (findPlayerByColor Blue) (game :: Game)) (stdGen :: StdGen)
+      \game stdGen -> let i' = evalRand (evalStateT (findPlayerByColor Blue) (game :: Game)) (stdGen :: StdGen)
+                          i = fromPlayerIndex i'
                       in i >= 0 && i < 4
     it "has a list of valid next actions, except at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
@@ -78,7 +79,7 @@ spec = do
 
         forM_ (zip3 [0..] playerIs (map fst gs)) $ \(i, c, g) ->
           it ("should permit placement for player " ++ (show c)) $ do
-            view currentPlayer g `shouldBe` c
+            view currentPlayer g `shouldBe` toPlayerIndex c
             views validActions length g `shouldSatisfy` (<= (54 - ((i `div` 2) * 3))) 
       it "should transition to Normal phase when placements are complete" $ do
         view phase normalGame `shouldBe` Normal
@@ -88,7 +89,7 @@ spec = do
       it "should start each turn with a roll" $ do
         let vA = view validActions normalGame
         let p1 = views players head normalGame
-        vA `shouldBe` [rollFor p1]
+        vA `shouldBe` [rollFor (p1^.playerIndex)]
       it "should distribute resources once a roll happens" $ do
         let totalAsOf g = sum . map (views resources totalResources) $ view players g
         let (starting, _)  = gs !! 16

@@ -2,7 +2,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Cataskell.GameData.Player
-( Player
+( PlayerIndex
+, toPlayerIndex
+, fromPlayerIndex
+, Player
 , playerName
 , playerIndex
 , resources
@@ -23,14 +26,25 @@ import Data.Maybe
 import Control.Lens
 import GHC.Generics (Generic)
 
+newtype PlayerIndex = PlayerIndex Int
+  deriving (Eq, Ord, Show, Read, Generic)
+
+toPlayerIndex :: Int -> PlayerIndex
+toPlayerIndex i | i <= 3 = PlayerIndex i
+                | otherwise = error $ (show i) ++ " out of bounds"
+
+fromPlayerIndex :: PlayerIndex -> Int
+fromPlayerIndex x = case x of
+  PlayerIndex i -> i
+
 data Player = Player
   { _playerName :: String
   , _playerColor :: Color
-  , _playerIndex :: Int
+  , _playerIndex :: PlayerIndex
   , _resources :: ResourceCount
   , _constructed :: [Item]
   , _bonuses :: [Bonus]
-  } deriving (Eq, Show, Read,Ord, Generic)
+  } deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''Player
 
@@ -41,7 +55,7 @@ mkPlayer :: (Int, Color, String) -> Player
 mkPlayer (i, c, n) = Player
   { _playerName = n
   , _playerColor = c
-  , _playerIndex = i
+  , _playerIndex = toPlayerIndex i
   , _resources = mempty
   , _constructed = initialItems
   , _bonuses = []

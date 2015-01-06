@@ -20,6 +20,9 @@ instance Arbitrary Player where
     r <- arbitrary
     return $ resources .~ r $ p
 
+instance Arbitrary PlayerIndex where
+  arbitrary = toPlayerIndex `fmap` elements [0..3]
+
 main :: IO ()
 main = hspec spec
 
@@ -29,6 +32,8 @@ spec = do
     let p = mkPlayer (0, Blue, "Nobody")
     it "has a name" $ do
       view playerName p `shouldBe` "Nobody"
+    it "has a player index" $ do
+      view playerIndex p `shouldBe` toPlayerIndex 0
     it "should begin with 0 resources" $ do
       (totalResources $ view resources p) `shouldBe` 0
     it "can add resources" $ property $

@@ -27,9 +27,11 @@ main = hspec spec
 spec :: Spec
 spec = do
   describe "A PlayerAction" $ do
-    let pAction = PlayerAction { _actor = mkPlayer (0, Blue, "NoOne"), _action = Roll }
-    it "should have an associated actor" $ do
-      pAction ^. actor `shouldSatisfy` validPlayer
+    let player' = mkPlayer (0, Blue, "NoOne")
+    let players' = [player']
+    let pAction = PlayerAction { _actor = player'^.playerIndex, _action = Roll }
+    it "should have an associated player index" $ do
+      players' !! (fromPlayerIndex $ pAction ^. actor) `shouldSatisfy` validPlayer
     it "should have an action" $ do
       pAction ^. action `shouldBe` Roll
   describe "A TradeAction" $ do
@@ -48,21 +50,21 @@ spec = do
       it "can be checked against the resources of the player" $ do
         p1 `shouldSatisfy` (\p -> enoughFor (p1offer ^? action.trade.offer.offering) p == (Just True))
 
-    let p2accept = fromJust $ accept p1offer p2
+    let p2accept = fromJust $ accept p1offer (p2^.playerIndex)
     describe "An Accept" $ do
       it "should contain the accepter, the original offer and the asker" $ do
-        view actor p2accept `shouldBe` p2
+        view actor p2accept `shouldBe` (p2^.playerIndex)
         p2accept ^? action.trade.offer `shouldBe` Just offer'
-        p2accept ^? action.trade.asker `shouldBe` Just p1
+        p2accept ^? action.trade.asker `shouldBe` Just (p1^.playerIndex)
       it "can be checked against the resources of the player" $ do
         p2 `shouldSatisfy` (\p -> enoughFor (p2accept ^? action.trade.offer.asking) p == (Just True))
 
-    let p3reject = fromJust $ reject p1offer p3 (Just "nope")
+    let p3reject = fromJust $ reject p1offer (p3^.playerIndex) (Just "nope")
     describe "A Reject" $ do
       it "should contain the rejecter, original offer and asker" $ do
-        view actor p3reject `shouldBe` p3
+        view actor p3reject `shouldBe` p3^.playerIndex
         p3reject ^? action.trade.offer `shouldBe` Just offer'
-        p3reject ^? action.trade.asker `shouldBe` Just p1
+        p3reject ^? action.trade.asker `shouldBe` Just (p1^.playerIndex)
       it "may contain a reason for rejection" $ do
         p3reject ^? action.trade.reason `shouldBe` (Just (Just "nope"))
 
@@ -82,5 +84,5 @@ spec = do
       \x -> view amountToDiscard (x :: DiscardAction) == (totalResources $ view resourcesDiscarding x)
   describe "rollFor" $ do
     it "produces a roll action for a player" $ property $
-      \p -> view action (rollFor (p :: Player)) == Roll
+      \p -> view action (rollFor (p :: PlayerIndex)) == Roll
 
