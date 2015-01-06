@@ -243,18 +243,29 @@ allStartingResources op' b = maybe mempty snd pointRes
         ptsToHex = getPointsToHexCentersMap b
         bldg = Map.singleton (op'^.point) op'
 
+roadsToPointsFor :: Color -> Board -> [Point]
+roadsToPointsFor color' board'
+  = let myRoads = getRoadsFor color' board'
+    in  concatMap (\e -> [point1 e, point2 e]) $ Map.keys myRoads
+
 -- | A road can be built at the end of another road or a settlement, anywhere there isn't already one
 validRoadsFor :: Color -> Board -> [Construct]
 validRoadsFor color' board'
-  = let myRoads = getRoadsFor color' board'
+  = let myPoints = roadsToPointsFor color' board'
         freeEdges' = freeEdges board'
-        myPoints = concatMap (\e -> [point1 e, point2 e]) $ Map.keys myRoads
         isAdjacentToMe e = (elem (point1 e) myPoints) || (elem (point2 e) myPoints)
         validEdges = filter isAdjacentToMe freeEdges'
     in map (\e -> built (road $ Just (e, color'))) validEdges
 
 validSettlementsFor :: Color -> Board -> [Construct]
-validSettlementsFor = assert False undefined
+validSettlementsFor color' board'
+  = let myPoints = roadsToPointsFor color' board'
+        freePoints' = freePoints board'
+        validPoints = filter ((flip elem) myPoints) freePoints'
+    in map (\p -> built (settlement $ Just (p, color'))) validPoints
 
 validCitiesFor :: Color -> Board -> [Construct]
-validCitiesFor = assert False undefined
+validCitiesFor color' board'
+  = let bldgs = getHabitationsFor color' board'
+        points = Map.keys $ Map.filter (\h -> isSettlement $ Building $ Edifice h) bldgs
+    in  map (\p -> built (city $ Just (p, color'))) points
