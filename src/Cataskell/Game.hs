@@ -238,7 +238,7 @@ doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
 doExchange playerIndex' offer' = do
   let askTotal = totalResources $ offer'^.asking
   harborFuncs <- getHarbors playerIndex'
-  let canGetTotal = maximum (map ($ offer'^.offering) harborFuncs)
+  let canGetTotal = maximum $ map ($ offer'^.offering) $ (genericHarborDiscount 4):harborFuncs
   if askTotal <= canGetTotal
   then do
     addToResources playerIndex' $ offer'^.asking

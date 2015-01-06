@@ -24,6 +24,7 @@ module Cataskell.GameData.Board
 , harborPoints
 , harborTypes
 , harborDiscount
+, genericHarborDiscount
 , newHexMap
 , newHarborMap
 , emptyBuildingMap
@@ -161,6 +162,12 @@ harborTypes = replicate 3 ThreeToOne ++
                 , Harbor Field
                 ]
 
+genericHarborDiscount :: Int -> (ResourceCount -> Int)
+genericHarborDiscount i
+  = let f r = case r of
+                ResourceCount a b c d e -> maximum [a,b,c,d,e] `div` i
+    in f
+
 harborDiscount :: Harbor -> (ResourceCount -> Int)
 harborDiscount harbor'
   = let f = case harbor' of
@@ -170,8 +177,7 @@ harborDiscount harbor'
               Harbor Field -> \r -> wheat r `div` 2
               Harbor Mountain -> \r -> ore r `div` 2
               Harbor Desert -> \_ -> 0 -- TODO: should this exist?
-              ThreeToOne -> \r -> case r of
-                                    ResourceCount a b c d e -> maximum [a,b,c,d,e] `div` 3
+              ThreeToOne -> genericHarborDiscount 3
     in  f
 
 newHarborMap :: (RandomGen g) => Rand g HarborMap
