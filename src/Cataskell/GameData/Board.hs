@@ -6,6 +6,7 @@ module Cataskell.GameData.Board
 , HexMap
 , BuildingMap
 , RoadMap
+, HarborMap
 , terrain
 , resource
 , roll
@@ -19,7 +20,12 @@ module Cataskell.GameData.Board
 , hexes
 , roads
 , buildings
+, harbors
+, harborPoints
+, harborTypes
+, harborDiscount
 , newHexMap
+, newHarborMap
 , emptyBuildingMap
 , emptyRoadMap
 , newBoard
@@ -55,6 +61,7 @@ data HexCenter = HexCenter
 type HexMap = Map.Map CentralPoint HexCenter
 type RoadMap = Map.Map UndirectedEdge (Maybe OnEdge)
 type BuildingMap = Map.Map Point (Maybe OnPoint)
+type HarborMap = Map.Map Point Harbor
 
 mkHexCenterUnsafe :: Terrain -> Int -> HexCenter
 mkHexCenterUnsafe t r = HexCenter { terrain = t
@@ -76,6 +83,7 @@ data Board = Board
   { _hexes :: HexMap
   , _roads :: RoadMap
   , _buildings :: BuildingMap
+  , _harbors :: HarborMap
   } deriving (Eq, Ord, Show, Read,Generic)
 
 makeLenses ''Board
@@ -127,11 +135,51 @@ swapHighValued hexMap
              else doSwap (head tooHigh) (head tooLow) hexMap
     in  if (length tooHigh == 0) then m' else swapHighValued m'
 
--- | Recursively generates hexmaps until a valid one is found
+-- | Generates a hexmap and swaps high-value pieces until a valid one is found
 newHexMap :: (RandomGen g) => Rand g HexMap
 newHexMap = do
   m <- newHexMap'
   return $ if checkHexNeighbors m then m else swapHighValued m
+
+harborPoints :: [[Point]]
+harborPoints = [ [Point (-2,0) Bottom, Point (-3,2) Top]
+               , [Point (-3,3) Top, Point (-2,2) Bottom]
+               , [Point (-1,2) Bottom, Point (-1,3) Top]
+               , [Point (1,1) Bottom, Point (1,2) Top]
+               , [Point (3, -1) Bottom, Point (2,1) Top]
+               , [Point (3, -2) Bottom, Point (2, -1) Top]
+               , [Point (1, -2) Top, Point (2, -3) Bottom]
+               , [Point (0,-2) Top, Point (0,-3) Bottom]
+               ]
+
+harborTypes :: [Harbor]
+harborTypes = replicate 3 ThreeToOne ++ 
+                [ Harbor Hill
+                , Harbor Mountain
+                , Harbor Forest
+                , Harbor Pasture
+                , Harbor Field
+                ]
+
+harborDiscount :: Harbor -> (ResourceCount -> Int)
+harborDiscount harbor'
+  = let f = case harbor' of
+              Harbor Hill -> \r -> brick r `div` 2
+              Harbor Forest -> \r -> lumber r `div` 2
+              Harbor Pasture -> \r -> wool r `div` 2
+              Harbor Field -> \r -> wheat r `div` 2
+              Harbor Mountain -> \r -> ore r `div` 2
+              Harbor Desert -> \_ -> 0 -- TODO: should this exist?
+              ThreeToOne -> \r -> case r of
+                                    ResourceCount a b c d e -> maximum [a,b,c,d,e] `div` 3
+    in  f
+
+newHarborMap :: (RandomGen g) => Rand g HarborMap
+newHarborMap = do
+  harborPoints' <- shuffleM harborPoints
+  harborTypes' <- shuffleM harborTypes
+  let harborList = concatMap (\(ps,t) -> map (\p -> (p, t)) ps) $ zip harborPoints' harborTypes'
+  return $ Map.fromList harborList
 
 emptyBuildingMap :: BuildingMap
 emptyBuildingMap
@@ -146,9 +194,11 @@ emptyRoadMap
 newBoard :: (RandomGen g) => Rand g Board
 newBoard = do
   hexMap <- newHexMap
+  harborMap <- newHarborMap
   return Board { _hexes = hexMap
                , _roads = emptyRoadMap
-               , _buildings = emptyBuildingMap }
+               , _buildings = emptyBuildingMap
+               , _harbors = harborMap }
 
 getHabitations :: Board -> Map.Map Point OnPoint
 getHabitations b

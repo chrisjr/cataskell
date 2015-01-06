@@ -20,6 +20,7 @@ import Control.Monad.Random
 import Control.Applicative ((<$>))
 
 import Cataskell.GameData.LocationSpec()
+import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
 instance NFData Terrain
 instance NFData HexCenter
@@ -32,14 +33,24 @@ instance Arbitrary HexCenter where
 
 instance Arbitrary HexMap where
   arbitrary = do
-    seed <- arbitrary
-    return $ evalRand newHexMap $ mkStdGen seed
+    stdGen <- (arbitrary :: Gen StdGen)
+    return $ evalRand newHexMap stdGen
+  shrink m = Map.fromList <$> shrink (Map.toList m)
+
+
+instance Arbitrary Harbor where
+  arbitrary = elements harborTypes
+
+instance Arbitrary HarborMap where
+  arbitrary = do
+    stdGen <- (arbitrary :: Gen StdGen)
+    return $ evalRand newHarborMap stdGen
   shrink m = Map.fromList <$> shrink (Map.toList m)
 
 instance Arbitrary Board where
   arbitrary = do
-    seed <- arbitrary
-    return $ evalRand newBoard $ mkStdGen seed
+    stdGen <- (arbitrary :: Gen StdGen)
+    return $ evalRand newBoard stdGen
 
 main :: IO ()
 main = hspec spec

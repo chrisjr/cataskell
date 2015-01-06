@@ -13,6 +13,7 @@ import Data.List (findIndex, elemIndex)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
+import Cataskell.GameData.Location
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 import Control.Lens
@@ -32,6 +33,7 @@ data Game = Game
   , _turnAdvanceBy :: Int
   , _rolled :: Maybe Int
   , _validActions :: [GameAction]
+  , _openTrades :: [TradeAction]
   , _winner :: Maybe PlayerIndex
   } deriving (Eq, Ord, Show, Read, Generic)
 
@@ -41,7 +43,8 @@ makeLenses ''Game
 newGame :: (RandomGen g) => [String] -> Rand g Game
 newGame pNames = do
   b <- newBoard
-  ps <- shuffleM $ mkPlayers pNames
+  shuffledNames <- shuffleM pNames
+  let ps = mkPlayers shuffledNames
   return $ Game { _phase = Initial 
                 , _board = b
                 , _players = ps
@@ -49,6 +52,7 @@ newGame pNames = do
                 , _turnAdvanceBy = 1
                 , _rolled = Nothing
                 , _validActions = possibleInitialSettlements (head ps) b
+                , _openTrades = []
                 , _winner = Nothing }
 
 runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
@@ -150,7 +154,7 @@ doAction act'
               newRoads <- uses (board.roads) (initialRoadsFor player' c'')
               validActions .= newRoads
             else return ()
-          Purchase x -> doPurchase actorIndex x
+          Purchase x -> doPurchase actorIndex x -- already checked resources
           Trade x -> doTrade actorIndex x
           Discard x -> doDiscard actorIndex x
           PlayCard x -> doPlayCard actorIndex x
@@ -216,7 +220,45 @@ getCard :: (RandomGen g) => PlayerIndex -> GameState g
 getCard = assert False undefined
 
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
-doTrade = assert False undefined
+doTrade playerIndex' tradeAction' = do
+  case tradeAction' of
+    Offer _ -> openTrades <>= [tradeAction']
+    Accept _ _ -> openTrades <>= [tradeAction']
+    Reject _ _ _ -> openTrades <>= [tradeAction']
+    CompleteTrade offer' accepterIndex' -> do
+      players . (ix $ fromPlayerIndex playerIndex') . resources <>= offer'^.asking
+      players . (ix $ fromPlayerIndex playerIndex') . resources <>= mkNeg (offer'^.offering)
+      players . (ix $ fromPlayerIndex accepterIndex') . resources <>= offer'^.offering
+      players . (ix $ fromPlayerIndex accepterIndex') . resources <>= mkNeg (offer'^.asking)
+      openTrades .= []
+    CancelTrade _ -> openTrades .= []
+    Exchange offer' -> doExchange playerIndex' offer'
+
+doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
+doExchange playerIndex' offer' = do
+  let askTotal = totalResources $ offer'^.asking
+  harborFuncs <- getHarbors playerIndex'
+  let canGetTotal = maximum (map ($ offer'^.offering) harborFuncs)
+  if askTotal <= canGetTotal
+  then do
+    addToResources playerIndex' $ offer'^.asking
+    addToResources playerIndex' (mkNeg $ offer'^.offering)
+  else return ()
+
+getPlayerBuildings :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Map.Map Point OnPoint)
+getPlayerBuildings playerIndex' = do
+  b <- use board
+  player' <- getPlayer playerIndex'
+  let color' = color player'
+  return $ Map.mapMaybe id $ Map.filter (\x -> color `fmap` x == Just color') $ b^.buildings
+
+getHarbors :: (RandomGen g) => PlayerIndex -> GameStateReturning g [ResourceCount -> Int]
+getHarbors playerIndex' = do
+  b <- use board
+  playerBuildings <- getPlayerBuildings playerIndex'
+  let harbors' = b^.harbors
+  let myHarbors = Map.elems $ Map.intersectionWith (\_ harbor' -> harbor') playerBuildings harbors'
+  return $ map (harborDiscount) myHarbors
 
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
 doDiscard = assert False undefined
