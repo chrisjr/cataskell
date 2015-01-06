@@ -44,8 +44,8 @@ spec = do
             in (resCountNow + 1) == resCountAfter
  
     let c' = [ Card VictoryPoint
-             , settlement $ Just (assert False undefined, White)
-             , settlement $ Just (assert False undefined, White)]
+             , settlement $ Just (undefined, White)
+             , settlement $ Just (undefined, White)]
     let p2 = constructed .~ c' $ (mkPlayer (2, White, "No-One"))
     it "should have a score" $ do
       view score p2 `shouldBe` 3

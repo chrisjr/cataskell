@@ -22,7 +22,16 @@ import GHC.Generics (Generic)
 type GameState g = StateT Game (RandT g Identity) ()
 type GameStateReturning g = StateT Game (RandT g Identity)
 
-data Phase = Initial | Normal | RobberAttack | MovingRobber | FreeRoads | End
+-- | A game phase that allows only one type of action.
+data SpecialPhase
+  = RobberAttack
+  | MovingRobber
+  | FreeRoads
+  | Inventing
+  | Monopolizing
+  deriving (Eq, Ord, Show, Read, Generic)
+
+data Phase = Initial | Normal | Special SpecialPhase | End
   deriving (Eq, Ord, Show, Read, Generic)
 
 data Game = Game
@@ -121,7 +130,11 @@ preconditions (PlayerAction playerIndex' action')
   = case action' of
       Roll -> [ phaseOneOf [Normal]
               , (\g -> view currentPlayer g == playerIndex')]
-      BuildForFree _ -> [phaseOneOf [Initial, FreeRoads]]
+      BuildForFree _ -> [phaseOneOf [Initial, Special FreeRoads]]
+      SpecialAction x -> case x of
+        M _ -> [phaseOneOf [Special Monopolizing]]
+        I _ -> [phaseOneOf [Special Inventing]]
+        R _ -> [phaseOneOf [Special MovingRobber]]
       PlayCard x -> [ phaseOneOf [Normal]
                     , hasItem (Card x) playerIndex'
                     , (\_ -> x /= VictoryPoint)] -- can't play a victory point
@@ -136,7 +149,7 @@ preconditions (PlayerAction playerIndex' action')
                                           , hasResourcesFor (offer'^.asking) accepterIndex']
         CancelTrade _ -> [phaseOneOf [Normal]]
         Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
-      Discard (DiscardAction i r) -> [ phaseOneOf [RobberAttack]
+      Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
                                      , (\_ -> totalResources r == i) ]
       EndTurn -> [phaseOneOf [Normal]]
 
@@ -157,6 +170,10 @@ doAction act'
               newRoads <- uses (board.roads) (initialRoadsFor player' c'')
               validActions .= newRoads
             else return ()
+          SpecialAction x -> case x of
+            M monopoly' -> doMonopoly actorIndex monopoly'
+            I invention' -> doInvention actorIndex invention'
+            R moveRobber' -> doMoveRobber actorIndex moveRobber'
           Purchase x -> doPurchase actorIndex x -- already checked resources
           Trade x -> doTrade actorIndex x
           Discard x -> doDiscard actorIndex x
@@ -268,24 +285,27 @@ getHarbors playerIndex' = do
   return $ map (harborDiscount) myHarbors
 
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
-doDiscard = assert False undefined
+doDiscard playerIndex' (DiscardAction _ r) = do
+  players . ix (fromPlayerIndex playerIndex') . resources <>= (mkNeg r)
 
 doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card' = do
   replaceInventory playerIndex' (Card card') Nothing $ do
     case card' of
-      RoadBuilding -> toRoadBuilding playerIndex'
-      Knight -> toMovingRobber
-      Invention -> assert False undefined
-      Monopoly -> assert False undefined
+      RoadBuilding -> toSpecialPhase FreeRoads playerIndex'
+      Knight -> toSpecialPhase MovingRobber playerIndex'
+      Invention -> toSpecialPhase Inventing playerIndex'
+      Monopoly -> toSpecialPhase Monopolizing playerIndex'
       VictoryPoint -> return ()
 
-toRoadBuilding :: (RandomGen g) => PlayerIndex -> GameState g
-toRoadBuilding playerIndex' = do
-  player' <- getPlayer playerIndex'
-  phase .= FreeRoads
-  possibleRoads <- uses board (validRoadsFor $ color player')
-  validActions .= map (mkFree playerIndex') possibleRoads
+doMonopoly :: (RandomGen g) => PlayerIndex -> Monopoly -> GameState g
+doMonopoly = assert False undefined
+
+doInvention :: (RandomGen g) => PlayerIndex -> Invention -> GameState g
+doInvention = assert False undefined
+
+doMoveRobber :: (RandomGen g) => PlayerIndex -> MoveRobber -> GameState g
+doMoveRobber = assert False undefined
 
 doRoll :: (RandomGen g) => GameState g
 doRoll = do
@@ -317,9 +337,7 @@ progress = do
                       , validActions .= nextActionsIfInitial
                       , turnAdvanceBy .= newAdv (fromPlayerIndex next')]
     Normal -> switchToPlayer next' [rollFor next']
-    RobberAttack -> return () -- if progress called when robber attacks, do nothing
-    MovingRobber -> return () -- if progress called when moving robber, do nothing
-    FreeRoads -> switchToPlayer next' [rollFor next']
+    Special _ -> return () -- if progress called in a special phase, do nothing
     End -> return ()
 
 switchToPlayer :: (RandomGen g) => PlayerIndex -> [GameAction] -> GameState g
@@ -332,8 +350,9 @@ switchToPlayer i valids = do
 updateForRoll :: (RandomGen g) => GameState g
 updateForRoll = do
   r' <- use rolled
+  currentPlayer' <- use currentPlayer
   case r' of
-    Just 7 -> toRobberAttack
+    Just 7 -> toSpecialPhase RobberAttack currentPlayer'
     _ -> distributeResources
 
 distributeResources :: (RandomGen g) => GameState g
@@ -352,20 +371,25 @@ initialToNormal = do
   phase .= Normal
   validActions .= [rollFor (toPlayerIndex 0)]
 
--- | When a 7 is rolled, move into RobberAttack. If no one has more than 7 resources, move on to MovingRobber.
-toRobberAttack :: (RandomGen g) => GameState g
-toRobberAttack = do
-  ps <- use players
-  let pRes = map (\p -> (p^.playerIndex, totalResources (p ^. resources))) ps
-  let mustDiscard = map mkDiscard $ filter (\(_, r) -> r > 7) pRes
-  if (length mustDiscard > 0) then sequence_ [ validActions .= mustDiscard
-                                             , phase .= RobberAttack ]
-                              else toMovingRobber
-
--- | Switch to MovingRobber phase
-toMovingRobber :: (RandomGen g) => GameState g
-toMovingRobber = do
-  phase .= MovingRobber
+toSpecialPhase :: (RandomGen g) => SpecialPhase -> PlayerIndex -> GameState g
+toSpecialPhase special' playerIndex' = do
+  phase .= Special special'
+  case special' of
+      FreeRoads -> do
+        player' <- getPlayer playerIndex'
+        possibleRoads <- uses board (validRoadsFor $ color player')
+        validActions .= map (mkFree playerIndex') possibleRoads
+      RobberAttack -> do -- ^ If no one has more than 7 resources, move on to MovingRobber.
+        ps <- use players
+        let pRes = map (\p -> (p^.playerIndex, totalResources (p ^. resources))) ps
+        let mustDiscard = map mkDiscard $ filter (\(_, r) -> r > 7) pRes
+        if (length mustDiscard > 0)
+        then do
+          validActions .= mustDiscard
+        else toSpecialPhase MovingRobber playerIndex'
+      MovingRobber -> assert False undefined
+      Inventing -> assert False undefined
+      Monopolizing -> assert False undefined
 
 -- | Game won by player p.
 wonBy :: (RandomGen g) => PlayerIndex -> GameState g

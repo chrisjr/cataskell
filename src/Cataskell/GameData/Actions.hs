@@ -47,9 +47,25 @@ data DiscardAction = DiscardAction
 
 makeLenses ''DiscardAction
 
+data Monopoly = MonopolyOn { _resourceType :: ResourceType }
+  deriving (Eq, Ord, Show, Read, Generic)
+
+data Invention = InventionOf { _resourceCount :: ResourceCount }
+  deriving (Eq, Ord, Show, Read, Generic)
+
+data MoveRobber = MoveRobber { _destination :: CentralPoint }
+  deriving (Eq, Ord, Show, Read, Generic)
+
+data SpecialAction
+  = M { _monopoly :: Monopoly }
+  | I { _invention :: Invention }
+  | R { _moveRobber :: MoveRobber }
+  deriving (Eq, Ord, Show, Read, Generic)
+
 data PlayerAction
   = Roll
   | BuildForFree { _construct :: Construct }
+  | SpecialAction { _dev :: SpecialAction }
   | PlayCard { _card :: DevelopmentCard }
   | Purchase { _item :: Item }
   | Trade { _trade :: TradeAction }

@@ -27,6 +27,7 @@ module Cataskell.GameData.Basics
 , isSettlement
 , isVictoryPoint
 , Terrain(..)
+, ResourceType(..)
 , Harbor(..)
 , Color(..)
 , Colored(..)
@@ -46,6 +47,10 @@ data Color = Red | Blue | Orange | White
 
 -- | Different terrains produce different resources
 data Terrain = Forest | Pasture | Field | Hill | Mountain | Desert
+  deriving (Eq, Ord, Show, Read,Generic)
+
+-- | Different resources (see ResourceCount for most uses)
+data ResourceType = Lumber | Wool | Wheat | Brick | Ore
   deriving (Eq, Ord, Show, Read,Generic)
 
 -- | Harbors allow exchanging 2 of a terrain's resource type for anything, or 3 of anything for 1 anything else
