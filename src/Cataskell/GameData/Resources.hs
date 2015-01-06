@@ -5,7 +5,6 @@ module Cataskell.GameData.Resources where
 import Cataskell.GameData.Basics
 import Data.Monoid
 import Data.Aeson
-import Control.Lens ((^?))
 import GHC.Generics (Generic)
 
 data ResourceCount = ResourceCount 
@@ -53,14 +52,18 @@ sufficient r c = and [lumber', wool', wheat', brick', ore']
         ore' = ore r >= ore c
 
 cost :: Item -> ResourceCount
-cost c
-  = let c' = c ^? itemType
-    in  case c' of
-      Just (H Settlement) -> mempty { lumber = 1, brick = 1, wool = 1, wheat = 1 }
-      Just (H City) -> mempty { wheat = 2, ore = 3 }
-      Just Road ->  mempty { lumber = 1, brick = 1 }
-      Just DevelopmentCard -> mempty { wool = 1, wheat = 1, ore = 1 }
-      _ -> error "This item has already been purchased."
+cost c = byItemType itemType'
+  where itemType' = case c of
+          Building x -> case x of 
+            Edifice (OnPoint _ _ h) -> H h
+            Roadway (OnEdge _ _) -> Road
+          Card _ -> DevelopmentCard
+          Potential x -> x
+        byItemType x = case x of
+          H Settlement -> mempty { lumber = 1, brick = 1, wool = 1, wheat = 1 }
+          H City -> mempty { wheat = 2, ore = 3 }
+          Road ->  mempty { lumber = 1, brick = 1 }
+          DevelopmentCard -> mempty { wool = 1, wheat = 1, ore = 1 }
 
 payFor :: ResourceCount -> Item -> Maybe ResourceCount
 payFor r c

@@ -7,6 +7,7 @@ import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
 import Cataskell.GameData.Player
+import Cataskell.GameData.Resources
 import Control.Monad.Random
 import Control.Monad.Identity
 import Control.Monad.State
@@ -90,7 +91,9 @@ spec = do
         vA `shouldBe` [rollFor p1]
       it "should distribute resources once a roll happens" $ do
         let (rolled, _) = gs !! 17
-        pending
+        let playersWithResources = view players rolled
+        let totals = map (views resources totalResources) playersWithResources
+        sum totals `shouldSatisfy` (> 0)
       it "should allow for trade offers" $ do
         pending
       it "should allow for building, according to resources" $ do

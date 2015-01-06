@@ -61,23 +61,6 @@ findPlayerByColor c = do
 
 update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
-  p <- use phase
-  case p of
-    Initial ->
-      updateInitial action'
-    Normal ->
-      assert False undefined
-    RobberAttack ->
-      assert False undefined
-    MovingRobber ->
-      assert False undefined
-    FreeRoads ->
-      assert False undefined    
-    End ->
-      assert False undefined
-
-updateInitial :: (RandomGen g) => GameAction -> GameState g
-updateInitial action' = do
   done <- checkAndExecute action'
   when (done && isJust (action' ^? action.construct.onEdge)) progress
 
@@ -94,17 +77,28 @@ isValid action' = do
   let valid = and $ map ($ current) predicates'
   return valid
 
+phaseOneOf :: [Phase] -> (Game -> Bool)
+phaseOneOf phases = (flip elem) phases . view phase
+
+hasItem :: Item -> Player -> (Game -> Bool)
+hasItem itemToFind player' = elem itemToFind . playerItems
+  where playerItems = view (players.(ix (player'^.playerIndex)).constructed)
+
+hasResourcesFor :: Item -> Player -> (Game -> Bool)
+hasResourcesFor itemToBuy player' = (flip sufficient) cost' . playerResources
+  where cost' = cost itemToBuy
+        playerResources = view (players.(ix (player'^.playerIndex)).resources)
+
 -- | Returns a series of predicates that must be true for an action to proceed
 preconditions :: GameAction -> [Game -> Bool]
 preconditions (PlayerAction player' action')
   = case action' of
       Roll -> []
-      BuildForFree _ -> [\g -> let p' = view phase g
-                               in (p' == Initial) || (p' == FreeRoads)]
-      PlayCard x -> [\g -> let pI = player'^.playerIndex
-                               items' = view (players.(ix pI).constructed) g
-                           in  isJust $ elemIndex (Card x) items']
-      Purchase _ -> []
+      BuildForFree _ -> [phaseOneOf [Initial, FreeRoads]]
+      PlayCard x -> [phaseOneOf [Normal],
+                     hasItem (Card x) player']
+      Purchase x -> [phaseOneOf [Normal],
+                     hasResourcesFor x player']
       Trade _ -> []
       Discard _ -> []
       EndTurn -> []
