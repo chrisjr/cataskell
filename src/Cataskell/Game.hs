@@ -27,7 +27,7 @@ type GameStateReturning g = StateT Game (RandT g Identity)
 data SpecialPhase
   = RobberAttack
   | MovingRobber
-  | FreeRoads
+  | FreeRoads Int
   | Inventing
   | Monopolizing
   deriving (Eq, Ord, Show, Read, Generic)
@@ -81,11 +81,21 @@ update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
   done <- checkAndExecute action'
   p <- use phase
-  let builtRoad = isJust (action' ^? action.construct.onEdge)
+  let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
   let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
 
-  when (done && p == Initial && builtRoad) progress
+  when (done && builtFreeRoad) $ do
+    if (p == Initial) then progress
+    else handleFreeRoads p
   when (done && p == Special MovingRobber && movedRobber) backToNormal
+
+-- | Move from one game state to the next
+handleFreeRoads :: (RandomGen g) => Phase -> GameState g
+handleFreeRoads phase' = do
+  playerIndex' <- use currentPlayer
+  when (phase' == Special (FreeRoads 2)) $ toSpecialPhase (FreeRoads 1) playerIndex'
+  when (phase' == Special (FreeRoads 1)) $ backToNormal
+  return ()
 
 -- | Checks that the action is valid and executes it if so
 checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
@@ -136,7 +146,7 @@ preconditions (PlayerAction playerIndex' action')
   = case action' of
       Roll -> [ phaseOneOf [Normal]
               , (\g -> view currentPlayer g == playerIndex')]
-      BuildForFree _ -> [phaseOneOf [Initial, Special FreeRoads]]
+      BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)]]
       SpecialAction x -> case x of
         M _ -> [phaseOneOf [Special Monopolizing]]
         I _ -> [phaseOneOf [Special Inventing]]
@@ -301,7 +311,7 @@ doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card' = do
   replaceInventory playerIndex' (Card card') Nothing $ do
     case card' of
-      RoadBuilding -> toSpecialPhase FreeRoads playerIndex'
+      RoadBuilding -> toSpecialPhase (FreeRoads 2) playerIndex'
       Knight -> toSpecialPhase MovingRobber playerIndex'
       Invention -> toSpecialPhase Inventing playerIndex'
       Monopoly -> toSpecialPhase Monopolizing playerIndex'
@@ -422,13 +432,15 @@ initialToNormal = do
   validActions .= [rollFor (toPlayerIndex 0)]
 
 backToNormal :: (RandomGen g) => GameState g
-backToNormal = genPlayerActions
+backToNormal = do
+  phase .= Normal
+  genPlayerActions
 
 toSpecialPhase :: (RandomGen g) => SpecialPhase -> PlayerIndex -> GameState g
 toSpecialPhase special' playerIndex' = do
   phase .= Special special'
   case special' of
-      FreeRoads -> do
+      FreeRoads _ -> do
         player' <- getPlayer playerIndex'
         possibleRoads <- uses board (validRoadsFor $ color player')
         validActions .= map (mkFree playerIndex') possibleRoads

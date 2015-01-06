@@ -86,14 +86,19 @@ spec = do
         view phase normalGame `shouldBe` Normal
         views validActions length normalGame `shouldBe` 1
 
+    -- produce some variants that will be used later
+
+    let (rolledOnce, randRolled) = gs !! 17
+
+    let withRoadBuilding = (players . ix 0 . constructed) <>~ [Card RoadBuilding] $ rolledOnce
+    let rolled7 = rolled .~ Just 7 $ rolledOnce
+
     context "in Normal phase" $ do
       it "should start each turn with a roll" $ do
         let vA = view validActions normalGame
         let p1 = views players head normalGame
         vA `shouldBe` [rollFor (p1^.playerIndex)]
         view turnAdvanceBy normalGame `shouldBe` 1
-
-      let (rolledOnce, randRolled) = gs !! 17
 
       it "should distribute resources once a roll happens" $ do
         let totalAsOf g = sum . map (views resources totalResources) $ view players g
@@ -113,25 +118,29 @@ spec = do
           let (g', r') = runGame (update pOffer) rolledOnce randRolled
           view openTrades g' `shouldBe` [Offer tradeOffer']
       it "should allow for building, according to resources" $ do
-        let canBuildSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
+        let enoughForSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
+        let unbuiltLeft p = any (== (unbuilt settlement)) (p^.constructed)
+        let spaceOnBoard p g = not . null $ validSettlementsFor (color p) (g^.board)
+        let canBuildSettlement p = enoughForSettlement p && unbuiltLeft p
         let isCurrentPlayer p g = p^.playerIndex == view currentPlayer g
         let isBuildSettlement x = isSettlement `fmap` (x ^? action.item) == Just True
-        let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g
+        let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g && spaceOnBoard p g
         let findSuitable g = findIndex suitable $ zip (view players g) (repeat g) 
-        let maybeGame = find (\(g, _) -> isJust $ findSuitable g) $ take 100 $ drop 16 gs
+        let maybeGame = find (\(g, _) -> isJust $ findSuitable g) $ take 200 $ drop 16 gs
         if isJust maybeGame
         then do
           let g' = fst $ fromJust maybeGame
           let vA = view validActions g'
           -- let suitablePI = toPlayerIndex findSuitable g' 
           vA `shouldSatisfy` (any isBuildSettlement)
-        else fail "couldn't find a player with enough resources in 100 turns"
+        else fail "couldn't find a player able to build a settlement after 200 actions"
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
-        let rolled7 = rolled .~ Just 7 $ rolledOnce
         let (robbed', _) = runGame updateForRoll rolled7 randRolled
         view phase robbed' `shouldBe` Special MovingRobber
       it "should transition to Special FreeRoads when a RoadBuilding card is played" $ do
-        pending
+        let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
+        let (g', _) = runGame (update playCard') withRoadBuilding randRolled
+        view phase g' `shouldBe` Special (FreeRoads 2)
       it "should transition to Special Inventing when an Invention card is played" $ do
         pending
       it "should transition to Special Monopolizing when a Monopoly card is played" $ do
@@ -150,8 +159,22 @@ spec = do
           specify "to an unoccupied hex, otherwise" $ do
             pending
       context "FreeRoads" $ do
+        let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
+        let (g', _) = runGame (update playCard') withRoadBuilding randRolled
+        let pI = view currentPlayer g'
+        let isFreeRoad x = isJust $ x ^? action.construct.onEdge
+
+        let (built1, _) = runGame (randomAct) g' randRolled
+        let (built2, _) = runGame (randomAct) built1 randRolled
+
         it "should allow the current player to build two roads" $ do
-          pending
+          view validActions g' `shouldSatisfy` (all isFreeRoad)
+          view validActions built1 `shouldSatisfy` (all isFreeRoad)
+        it "should return to normal after two roads are built" $ do
+          let vA = view validActions built2
+          vA `shouldSatisfy` (not . any isFreeRoad)
+          vA `shouldSatisfy` (elem (mkEndTurn pI))
+          view phase built2 `shouldBe` Normal
       context "Inventing" $ do
         it "should allow the current player to obtain two resources of their choice" $ do
           pending
