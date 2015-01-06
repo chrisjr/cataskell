@@ -13,7 +13,8 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
 import Data.Maybe (fromJust)
-import Control.Lens ((^.), (^..), view, views, to, use, uses)
+import Data.Monoid (mempty)
+import Control.Lens hiding (elements)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
 newtype InitialGame = InitialGame Game
@@ -90,29 +91,58 @@ spec = do
         let vA = view validActions normalGame
         let p1 = views players head normalGame
         vA `shouldBe` [rollFor (p1^.playerIndex)]
+        view turnAdvanceBy normalGame `shouldBe` 1
+
+      let (rolledOnce, randRolled) = gs !! 17
+
       it "should distribute resources once a roll happens" $ do
         let totalAsOf g = sum . map (views resources totalResources) $ view players g
         let (starting, _)  = gs !! 16
-        let (rolled, _) = gs !! 17
-        totalAsOf rolled `shouldSatisfy` (> (totalAsOf starting))
-      it "should allow for trade offers" $ do
-        pending
+        totalAsOf rolledOnce `shouldSatisfy` (> (totalAsOf starting))
+
+      let pI = view currentPlayer rolledOnce
+      let pOffer = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
+      let tradeOffer' = fromJust $ pOffer ^? action.trade.offer
+
+      it "should allow for a trade offer" $ do
+        let vA = view validActions rolledOnce
+        vA `shouldSatisfy` (any (actionLike pOffer))
+
+      context "when trading" $ do
+        it "should add it to the open trades" $ do
+          let (g', r') = runGame (update pOffer) rolledOnce randRolled
+          view openTrades g' `shouldBe` [Offer tradeOffer']
       it "should allow for building, according to resources" $ do
         pending
-      it "should transition to RobberAttack phase when a 7 is rolled" $ do
+      it "should transition to Special RobberAttack when a 7 is rolled" $ do
+        pending
+      it "should transition to Special FreeRoads when a RoadBuilding card is played" $ do
+        pending
+      it "should transition to Special Inventing when an Invention card is played" $ do
+        pending
+      it "should transition to Special Monopolizing when a Monopoly card is played" $ do
         pending
 
-    context "in RobberAttack phase" $ do
-      it "should force any players with over 7 resources to discard half" $ do
-        pending
-      it "should transition into MovingRobber phase after discards" $ do
-        pending
-
-    context "in MovingRobber phase" $ do
-      describe "the player must move the robber" $ do
-        specify "to a hex neighbored solely by players with >2 visible victory points" $ do
+    context "in the Special phase" $ do
+      context "RobberAttack" $ do
+        it "should force any players with over 7 resources to discard half" $ do
           pending
-        specify "to an unoccupied hex, otherwise" $ do
+        it "should transition into MovingRobber phase after discards" $ do
+          pending
+      context "MovingRobber" $ do
+        describe "the player must move the robber" $ do
+          specify "to a hex neighbored solely by players with >2 visible victory points" $ do
+            pending
+          specify "to an unoccupied hex, otherwise" $ do
+            pending
+      context "FreeRoads" $ do
+        it "should allow the current player to build two roads" $ do
+          pending
+      context "Inventing" $ do
+        it "should allow the current player to obtain two resources of their choice" $ do
+          pending
+      context "Monopolizing" $ do
+        it "should allow the current player to obtain all resources of a certain type" $ do
           pending
 
     context "in End phase" $ do

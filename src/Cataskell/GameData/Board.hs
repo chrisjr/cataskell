@@ -1,42 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Cataskell.GameData.Board 
-( HexCenter
-, HexMap
-, BuildingMap
-, RoadMap
-, HarborMap
-, terrain
-, resource
-, roll
-, hasRobber
-, mkHexCenter
-, hexMapFromList
-, terrains
-, rolls
-, checkHexNeighbors
-, Board(..)
-, hexes
-, roads
-, buildings
-, harbors
-, harborPoints
-, harborTypes
-, harborDiscount
-, genericHarborDiscount
-, newHexMap
-, newHarborMap
-, emptyBuildingMap
-, emptyRoadMap
-, newBoard
-, freePoints
-, build
-, allResourcesFromRoll
-, allStartingResources
-, validRoadsFor
-) where
-
+module Cataskell.GameData.Board where
 
 import Cataskell.BoardGraph (allEdges, neighborPoints, resourceConnections, roadConnections)
 import Cataskell.GameData.Basics
@@ -207,14 +172,31 @@ newBoard = do
                , _harbors = harborMap }
 
 getHabitations :: Board -> Map.Map Point OnPoint
-getHabitations b
-  = Map.mapMaybe id $ view buildings b
+getHabitations b = Map.mapMaybe id $ view buildings b
+
+filterByColor :: (Colored v) => Color -> Map.Map k v -> Map.Map k v
+filterByColor color' = Map.filter ((== color') . color) 
+
+getHabitationsFor :: Color -> Board -> Map.Map Point OnPoint
+getHabitationsFor color' = filterByColor color' . getHabitations
+
+getRoads :: Board -> Map.Map UndirectedEdge OnEdge
+getRoads b = Map.mapMaybe id $ view roads b
+
+getRoadsFor :: Color -> Board -> Map.Map UndirectedEdge OnEdge
+getRoadsFor color' = filterByColor color' . getRoads
+
 
 freePoints :: Board -> [Point]
 freePoints b
   = let occupiedPoints = Map.keys . Map.filter (isJust) $ view buildings b
         nns = concatMap (neighborPoints roadConnections) occupiedPoints
     in  allPoints \\ (occupiedPoints ++ nns)
+
+freeEdges :: Board -> [UndirectedEdge]
+freeEdges b
+  = let occupiedEdges = Map.keys . Map.filter (isJust) $ view roads b
+    in  allEdges \\ occupiedEdges
 
 -- | Adjusts the board to add a building/road.
 -- | Checks that nothing was present (if settlement or road), or that a settlement
@@ -261,5 +243,18 @@ allStartingResources op' b = maybe mempty snd pointRes
         ptsToHex = getPointsToHexCentersMap b
         bldg = Map.singleton (op'^.point) op'
 
+-- | A road can be built at the end of another road or a settlement, anywhere there isn't already one
 validRoadsFor :: Color -> Board -> [Construct]
-validRoadsFor = assert False undefined
+validRoadsFor color' board'
+  = let myRoads = getRoadsFor color' board'
+        freeEdges' = freeEdges board'
+        myPoints = concatMap (\e -> [point1 e, point2 e]) $ Map.keys myRoads
+        isAdjacentToMe e = (elem (point1 e) myPoints) || (elem (point2 e) myPoints)
+        validEdges = filter isAdjacentToMe freeEdges'
+    in map (\e -> built (road $ Just (e, color'))) validEdges
+
+validSettlementsFor :: Color -> Board -> [Construct]
+validSettlementsFor = assert False undefined
+
+validCitiesFor :: Color -> Board -> [Construct]
+validCitiesFor = assert False undefined

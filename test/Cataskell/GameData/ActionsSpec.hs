@@ -37,38 +37,42 @@ spec = do
   describe "A TradeAction" $ do
     let oneWheat = (mempty { wheat = 1 }) :: ResourceCount
     let oneOre = (mempty { ore = 1 }) :: ResourceCount
-    let offer' = TradeOffer { _offering = oneWheat, _asking = oneOre }
+
     let p1 = resources .~ mempty { wheat = 2, ore = 2 } $ mkPlayer (1, Blue, "NoOne")
-    let p1offer = mkOffer offer' p1
+    let p1offer = mkOffer (p1^.playerIndex) oneWheat oneOre
+    let offer' = fromJust $ p1offer ^? action.trade.offer
     let p2 = resources .~ mempty { ore = 3 } $ mkPlayer (2, White, "Nobody")
     let p3 = mkPlayer (3, Orange, "Nadie")
 
     describe "A TradeOffer" $ do
-      it "should have an offering and asking amount" $ do
+      it "should have an offering amount, asking amount, and player offering" $ do
         view offering offer' `shouldBe` oneWheat
         view asking offer' `shouldBe` oneOre
+        view offeredBy offer' `shouldBe` p1^.playerIndex
       it "can be checked against the resources of the player" $ do
         p1 `shouldSatisfy` (\p -> enoughFor (p1offer ^? action.trade.offer.offering) p == (Just True))
 
-    let p2accept = fromJust $ accept p1offer (p2^.playerIndex)
+    let p2accept = accept offer' (p2^.playerIndex)
     describe "An Accept" $ do
       it "should contain the accepter, the original offer and the asker" $ do
         view actor p2accept `shouldBe` (p2^.playerIndex)
         p2accept ^? action.trade.offer `shouldBe` Just offer'
-        p2accept ^? action.trade.asker `shouldBe` Just (p1^.playerIndex)
+        p2accept ^? action.trade.offer.offeredBy `shouldBe` Just (p1^.playerIndex)
+        p2accept ^? action.trade.accepter `shouldBe` Just (p2^.playerIndex)
       it "can be checked against the resources of the player" $ do
         p2 `shouldSatisfy` (\p -> enoughFor (p2accept ^? action.trade.offer.asking) p == (Just True))
 
-    let p3reject = fromJust $ reject p1offer (p3^.playerIndex) (Just "nope")
+    let p3reject = reject offer' (p3^.playerIndex) (Just "nope")
     describe "A Reject" $ do
       it "should contain the rejecter, original offer and asker" $ do
         view actor p3reject `shouldBe` p3^.playerIndex
         p3reject ^? action.trade.offer `shouldBe` Just offer'
-        p3reject ^? action.trade.asker `shouldBe` Just (p1^.playerIndex)
+        p3reject ^? action.trade.offer.offeredBy `shouldBe` Just (p1^.playerIndex)
+        p3reject ^? action.trade.rejecter `shouldBe` Just (p3^.playerIndex)
       it "may contain a reason for rejection" $ do
         p3reject ^? action.trade.reason `shouldBe` (Just (Just "nope"))
 
-    let p1complete = fromJust $ complete p1offer p2accept
+    let p1complete = fromJust $ complete (Offer offer') (fromJust $ p2accept^? action.trade)
     describe "A CompleteTrade" $ do
       it "can be checked against the resources of both players" $ do
         p1 `shouldSatisfy` (\p -> enoughFor (p1complete ^? action.trade.offer.offering) p == (Just True))

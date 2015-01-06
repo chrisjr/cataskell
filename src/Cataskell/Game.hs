@@ -8,7 +8,8 @@ import Control.Monad.State
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Control.Exception (assert)
-import Data.Maybe (fromJust, isJust)
+import Data.Monoid (mempty)
+import Data.Maybe (fromJust, isJust, catMaybes)
 import Data.List (findIndex, elemIndex)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -67,8 +68,8 @@ newGame pNames = do
                 , _allCards = cards
                 , _winner = Nothing }
 
-runGame :: (RandomGen g) => GameState g -> Game -> g -> Game
-runGame stModify game stdgen = evalRand (execStateT stModify game) stdgen
+runGame :: (RandomGen g) => GameState g -> Game -> g -> (Game, g)
+runGame stModify game stdgen = runRand (execStateT stModify game) stdgen
 
 findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
@@ -202,6 +203,9 @@ doBuild p' construct' = do
   replaceInventory p' potential (Just $ Building construct') $ do
     board .= build construct' b
 
+inventory :: (RandomGen g) => PlayerIndex -> GameStateReturning g [Item]
+inventory playerIndex' = getPlayer playerIndex' >>= (return . view constructed)
+
 replaceInventory :: (RandomGen g) => PlayerIndex -> Item -> Maybe Item -> GameState g -> GameState g
 replaceInventory playerIndex' old' new' extraActions = do
   hasLeft <- use (players . ix (fromPlayerIndex playerIndex') . constructed)
@@ -313,7 +317,42 @@ doRoll = do
   d2 <- getRandomR (1, 6)
   let r' = d1 + d2
   rolled .= (Just r')
+  genPlayerActions
   updateForRoll
+
+genPlayerActions :: (RandomGen g) => GameState g
+genPlayerActions = do
+  currentPlayerIndex <- use currentPlayer
+  purchases' <- possiblePurchases currentPlayerIndex
+  trades <- possibleTradeActions currentPlayerIndex
+  cardsToPlay <- possibleDevelopmentCards currentPlayerIndex
+  validActions .= purchases' ++ trades ++ cardsToPlay
+
+possiblePurchases :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possiblePurchases playerIndex' = do
+  player' <- getPlayer playerIndex'
+  b <- use board
+  let roads' = validRoadsFor (color player') b
+  let settlements' = validSettlementsFor (color player') b
+  let cities' = validCitiesFor (color player') b
+  let cards' = if sufficient (player'^.resources) (cost $ Potential DevelopmentCard)
+               then [purchase playerIndex' (Potential DevelopmentCard)]
+               else []
+  let mkPurchases = map ((purchase playerIndex') . Building)
+  return $ cards' ++ (concatMap mkPurchases [roads', settlements', cities'])
+
+possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possibleTradeActions playerIndex' = do
+  -- openTrades' <- use openTrades
+  -- let accept' = accept 
+  -- let completes = 
+  return [mkOffer playerIndex' mempty mempty] -- :completes
+
+possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possibleDevelopmentCards playerIndex' = do
+  items' <- inventory playerIndex'
+  let cards' = catMaybes $ map (\x -> x ^? card) items'
+  return $ map (mkPlayCard playerIndex') cards'
 
 -- | Called on EndTurn action
 progress :: (RandomGen g) => GameState g
@@ -331,11 +370,13 @@ progress = do
   nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
   case p of
     Initial -> if (currentPlayerIndex == 0 && adv == -1) 
-               then initialToNormal
-               else sequence_ $
-                      [ currentPlayer .= next'
-                      , validActions .= nextActionsIfInitial
-                      , turnAdvanceBy .= newAdv (fromPlayerIndex next')]
+               then do
+                turnAdvanceBy .= 1
+                initialToNormal
+               else do
+                 currentPlayer .= next'
+                 validActions .= nextActionsIfInitial
+                 turnAdvanceBy .= newAdv (fromPlayerIndex next')
     Normal -> switchToPlayer next' [rollFor next']
     Special _ -> return () -- if progress called in a special phase, do nothing
     End -> return ()

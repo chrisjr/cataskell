@@ -1,40 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Cataskell.GameData.Basics
-( Valuable(..)
-, DevelopmentCard(..)
-, Inhabited(..)
-, ItemType(..)
-, OnPoint(..)
-, OnEdge(..)
-, Construct(..)
-, Item(..)
-, itemType
-, building
-, point
-, edge
-, buildingType
-, onPoint
-, onEdge
-, unbuilt
-, built
-, settlement
-, city
-, road
-, devCard
-, deconstruct
-, isSettlement
-, isVictoryPoint
-, Terrain(..)
-, ResourceType(..)
-, Harbor(..)
-, Color(..)
-, Colored(..)
-, Bonus(..)
-, initialItems
-, allDevelopmentCards
-) where
+module Cataskell.GameData.Basics where
 
 import Cataskell.GameData.Location
 import Control.Lens

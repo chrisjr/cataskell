@@ -18,17 +18,18 @@ import GHC.Generics (Generic)
 data TradeOffer = TradeOffer 
   { _offering :: ResourceCount
   , _asking :: ResourceCount
+  , _offeredBy :: PlayerIndex  -- ^ the original player making the offer
   } deriving (Eq, Show, Read, Ord, Generic)
 
 makeLenses ''TradeOffer
 
 data TradeAction
   = Offer { _offer :: TradeOffer }
-  | Accept { _offer :: TradeOffer  -- ^ the offer in question
-           , _asker :: PlayerIndex      -- ^ the original player who asked to trade
+  | Accept { _offer :: TradeOffer      -- ^ the offer in question
+           , _accepter :: PlayerIndex  -- ^ the player accepting
            }
   | Reject { _offer :: TradeOffer     -- ^ the offer in question
-           , _asker :: PlayerIndex         -- ^ the original player who asked to trade
+           , _rejecter :: PlayerIndex -- ^ the player rejecting
            , _reason :: Maybe String  -- ^ the optional reason for rejecting the trade
            }
   | CompleteTrade { _offer :: TradeOffer  -- ^ the offer to be completed
@@ -66,7 +67,7 @@ data PlayerAction
   = Roll
   | BuildForFree { _construct :: Construct }
   | SpecialAction { _dev :: SpecialAction }
-  | PlayCard { _card :: DevelopmentCard }
+  | PlayCard { _cardToPlay :: DevelopmentCard }
   | Purchase { _item :: Item }
   | Trade { _trade :: TradeAction }
   | Discard { _discarding :: DiscardAction }
@@ -81,6 +82,12 @@ data GameAction
   deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''GameAction
+
+actionLike :: GameAction -> GameAction -> Bool
+actionLike playerAction action2
+  = case playerAction^.action of
+      Trade (Offer x) -> (_offeredBy x) == (action2^.actor)
+      _ -> playerAction == action2
 
 -- | Create an empty Discard action
 mkDiscard :: (PlayerIndex, Int) -> GameAction
@@ -98,6 +105,10 @@ mkInitialSettlement (player', p) = mkFree (player'^.playerIndex) $ mkSettlement 
 mkFree :: PlayerIndex -> Construct -> GameAction
 mkFree pI construct' = PlayerAction { _actor = pI
                                     , _action = BuildForFree construct' }
+
+purchase :: PlayerIndex -> Item -> GameAction
+purchase pI item' = PlayerAction { _actor = pI
+                                      , _action = Purchase item' }
 
 mkSettlement :: (Player, Point) -> Construct
 mkSettlement (player', p') = built . settlement $ Just (p', color player')
@@ -119,47 +130,46 @@ enoughFor :: Maybe ResourceCount -> Player -> Maybe Bool
 enoughFor amt p
   = (sufficient (p ^. resources)) `fmap` amt
 
-mkOffer :: TradeOffer -> Player -> GameAction
-mkOffer offer' p
+mkOffer :: PlayerIndex -> ResourceCount -> ResourceCount -> GameAction
+mkOffer playerIndex' offering' asking'
   = PlayerAction
-      { _actor = p^.playerIndex
-      , _action = Trade (Offer offer') }
+      { _actor = playerIndex'
+      , _action = Trade (Offer (TradeOffer offering' asking' playerIndex'))
+      }
 
-accept :: (Monad m) => GameAction -> PlayerIndex -> m GameAction
-accept act' accepterI
-  = let offer' = act' ^? action.trade.offer
-    in case offer' of
-      Just tradeOffer ->
-        return PlayerAction
-          { _actor = accepterI
-          , _action = Trade (Accept { _offer = tradeOffer
-                                    , _asker = act' ^. actor }) }
-      Nothing -> fail "Tried to accept something that wasn't an offer"
+mkPlayCard :: PlayerIndex -> DevelopmentCard -> GameAction
+mkPlayCard playerIndex' card'
+  = PlayerAction
+      { _actor = playerIndex'
+      , _action = PlayCard card' }
 
-reject :: (Monad m) => GameAction -> PlayerIndex -> Maybe String -> m GameAction
-reject act' rejecterIndex maybeReason
-  = let offer' = act' ^? action.trade.offer
-    in case offer' of
-      Just tradeOffer ->
-        return PlayerAction
-          { _actor = rejecterIndex
-          , _action = Trade (Reject { _offer = tradeOffer
-                                    , _asker = act' ^. actor 
-                                    , _reason = maybeReason })
-          }
-      Nothing -> fail "Tried to reject something that wasn't an offer"
+accept :: TradeOffer -> PlayerIndex -> GameAction
+accept offer' accepter'
+  = PlayerAction
+      { _actor = accepter'
+      , _action = Trade (Accept { _offer = offer'
+                                , _accepter = accepter' }) }
 
-complete :: GameAction -> GameAction -> Maybe GameAction
-complete p1offer p2accept = do
-  offer' <- p1offer ^? action.trade.offer
-  offer'' <- p2accept ^? action.trade.offer
-  let p1 = p1offer ^. actor
-  let p2 = p2accept ^. actor
+reject :: TradeOffer -> PlayerIndex -> Maybe String -> GameAction
+reject offer' rejecter' maybeReason
+  = PlayerAction
+      { _actor = rejecter'
+      , _action = Trade (Reject { _offer = offer'
+                                , _rejecter = rejecter'
+                                , _reason = maybeReason })
+      }
+
+complete :: TradeAction -> TradeAction -> Maybe GameAction
+complete p1offer p2acceptance = do
+  let offer' = p1offer ^. offer
+  let p1 = offer' ^. offeredBy
+  p2 <- p2acceptance ^? accepter
+  let offer'' = p2acceptance ^. offer
   return $ assert (offer' == offer'') PlayerAction
       { _actor = p1
       , _action = Trade (CompleteTrade { _offer = offer'
                                        , _accepter = p2
-                                      })
+                                       })
       }
 
 rollFor :: PlayerIndex -> GameAction
