@@ -108,11 +108,11 @@ spec = do
         let (starting, _)  = gs !! 16
         totalAsOf rolledOnce `shouldSatisfy` (> (totalAsOf starting))
 
+      let pOffer = mkOffer (view currentPlayer rolledOnce) (mempty { ore = 1} ) (mempty { wheat = 1 } )
+
       it "should allow for a trade offer" $ do
         let vA = view validActions rolledOnce
-        let cur = view currentPlayer rolledOnce
-        let pOffer = mkOffer cur (mempty { ore = 1} ) (mempty { wheat = 1 } )
-        vA `shouldSatisfy` (any (actionLike pOffer))
+        vA `shouldSatisfy` (any isTradeAction)
 
       let playerWithOre g = let ps = view players g
                             in view playerIndex `fmap` (find (\p -> (ore $ view resources p) >= 1) ps)
@@ -126,16 +126,17 @@ spec = do
                                          in p == (view currentPlayer g)
                                     else False
                                 d = Normal == view phase g
-                            in isJust o && isJust w && c && d
+                                e = any isTradeAction (view validActions g)
+                            in and [isJust o, isJust w, c, d, e]
       let maybeFurtherAlong = find (\(g, _) -> wellResourced g) gs
       let (furtherAlong, _) = fromJust maybeFurtherAlong
 
       let pI = view currentPlayer furtherAlong
-      let pOffer = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
+      let pOffer' = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
       let tradeOffer' = fromJust $ pOffer ^? action.trade.offer
 
       context "when trading" $ do
-        let (g', r') = runGame (update pOffer) furtherAlong randRolled
+        let (g', r') = runGame (update pOffer') furtherAlong randRolled
         let others = views players (filter ((/= pI) . view playerIndex)) g'
         let otherIs = map (view playerIndex) others
         let acceptancesAll = map (accept tradeOffer') otherIs

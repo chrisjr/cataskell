@@ -91,11 +91,11 @@ data GameAction
 
 makeLenses ''GameAction
 
-actionLike :: GameAction -> GameAction -> Bool
-actionLike playerAction action2
-  = case playerAction^.action of
-      Trade (Offer x) -> (_offeredBy x) == (action2^.actor)
-      _ -> playerAction == action2
+-- | Test if the action is a TradeAction.
+isTradeAction :: GameAction -> Bool
+isTradeAction trade' = case trade' of
+  PlayerAction _ (Trade _) -> True
+  _ -> False
 
 -- | Create an empty Discard action
 mkDiscard :: (PlayerIndex, Int) -> GameAction
