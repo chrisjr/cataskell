@@ -28,13 +28,30 @@ toInitialGame x | x ^. phase == Initial = InitialGame x
 fromInitialGame :: InitialGame -> Game
 fromInitialGame (InitialGame x) = x
 
+mkSteps :: (RandomGen g) => Rand g Int
+mkSteps = getRandomR (0, 100)
+
+mkGame :: (RandomGen g) => Rand g Game
+mkGame = do
+  names <- uniform [["1", "2", "3"], ["1", "2", "3", "4"]]
+  initialG <- newGame names
+  steps <- mkSteps
+  foldM (\acc _ -> (execStateT randomAct) acc) initialG [0..steps]
+
+mkGames :: (RandomGen g) => Rand g [Game]
+mkGames = replicateM 50 mkGame
+
+randomGames :: [Game]
+randomGames = evalRand mkGames (mkStdGen 0)
+
 instance Arbitrary Game where
-  arbitrary = do
-    initial <- arbitrary
-    stdGen <- (arbitrary :: Gen StdGen)
-    numSteps <- choose (0, 50)
-    let randomGs = iterate' (\(x, r) -> runRand (execStateT randomAct x) r) (initial, stdGen)
-    return $ fst (randomGs !! numSteps)
+  arbitrary = elements randomGames
+    -- initial <- arbitrary
+    -- stdGen <- (arbitrary :: Gen StdGen)
+    -- numSteps <- choose (0, 20)
+    -- let randomGs = iterate' (\(x, r) -> runGame randomAct x r) (initial, stdGen)
+    -- return $ fst (randomGs !! numSteps)
+    -- return $ fromInitialGame initial
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -52,15 +69,16 @@ spec = do
   describe "A new game" $ do
     it "should start in the Initial phase" $ property $
       \g -> (view phase $ fromInitialGame (g :: InitialGame)) == Initial
-  describe "Game invariants" $ do
     it "must have either 3 or 4 players" $ property $
-      \game -> let l = length $ view players (game :: Game)
+      \game -> let l = length $ view players $ fromInitialGame (game :: InitialGame)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
-      \game stdGen -> let i' = evalRand (evalStateT (findPlayerByColor Blue) (game :: Game)) (stdGen :: StdGen)
+      \game stdGen -> let g' = fromInitialGame (game :: InitialGame) 
+                          i' = evalRand (evalStateT (findPlayerByColor Blue) g') (stdGen :: StdGen)
                           i = fromPlayerIndex i'
-                      in i >= 0 && i < 4
-    it "has a non-zero list of next actions, except at the end" $ property $
+                          in i >= 0 && i < 4
+  describe "Game invariants" $ do
+    it "has a non-zero list of next actions, unless at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
                in (n > 0) || (view phase game == End)
     it "has only valid actions in the validActions list" $ property $
