@@ -13,7 +13,7 @@ with haskellPackages; cabal.mkDerivation (self: {
   buildTools = [ cabalInstall hsdev ];
   shellHook =
     ''
-      e() { "/Applications/Sublime Text.app/Contents/MacOS/Sublime Text" $@ & }
+      e() { ~/.nix-profile/Applications/Emacs.app/Contents/MacOS/Emacs $@ & }
     '';
   meta = {
     homepage = "http://github.com/chrisjr/cataskell";
