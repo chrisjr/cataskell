@@ -114,28 +114,30 @@ spec = do
         let vA = view validActions rolledOnce
         vA `shouldSatisfy` (any isTradeAction)
 
-      let playerWithOre g = let ps = view players g
-                            in view playerIndex `fmap` (find (\p -> (ore $ view resources p) >= 1) ps)
-      let playerWithWheat g = let ps = view players g
-                              in view playerIndex `fmap` (find (\p -> (wheat $ view resources p) >= 1) ps)
-
-      let wellResourced g = let o = playerWithOre g
-                                w = playerWithWheat g
-                                c = if isJust w
-                                    then let p = fromJust w
-                                         in p == (view currentPlayer g)
-                                    else False
-                                d = Normal == view phase g
-                                e = any isTradeAction (view validActions g)
-                            in and [isJust o, isJust w, c, d, e]
-      let maybeFurtherAlong = find (\(g, _) -> wellResourced g) gs
-      let (furtherAlong, _) = fromJust maybeFurtherAlong
-
-      let pI = view currentPlayer furtherAlong
-      let pOffer' = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
-      let tradeOffer' = fromJust $ pOffer ^? action.trade.offer
-
       context "when trading" $ do
+        let playerWithOre g = let ps = view players g
+                              in view playerIndex `fmap` (find (\p -> (ore $ view resources p) >= 1) ps)
+        let playerWithWheat g = let ps = view players g
+                                in view playerIndex `fmap` (find (\p -> (wheat $ view resources p) >= 1) ps)
+
+        let wellResourced g = let o = playerWithOre g
+                                  w = playerWithWheat g
+                                  c = if isJust o
+                                      then let p = fromJust o
+                                           in  p == (view currentPlayer g)
+                                      else False
+                                  d = Normal == view phase g
+                                  e = any isTradeAction (view validActions g)
+                              in and [isJust o, isJust w, c, d, e]
+        let maybeFurtherAlong = find (\(g, _) -> wellResourced g) gs
+        let (furtherAlong, _) = fromJust maybeFurtherAlong
+
+        let pI = view currentPlayer furtherAlong
+        let pOffer' = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
+        let tradeOffer' = fromJust $ pOffer ^? action.trade.offer
+
+        let beforeTradeP1 = ((view players furtherAlong) !! (fromPlayerIndex pI))^.resources
+
         let (g', r') = runGame (update pOffer') furtherAlong randRolled
         let others = views players (filter ((/= pI) . view playerIndex)) g'
         let otherIs = map (view playerIndex) others
@@ -163,34 +165,49 @@ spec = do
         let (accepted, _) = runGame (update acceptance) g' randRolled
 
         let acceptance' = acceptance^?!action.trade
-        let complete' = fromJust $ complete (Offer tradeOffer') acceptance'
+        let acceptedOffer = Offer (acceptance'^.offer)
+        let aPI = acceptance^?!actor
+
+        let beforeTradeP2 = ((view players furtherAlong) !! (fromPlayerIndex aPI))^.resources
+        let complete' = fromJust $ complete acceptance'
 
         it "should let another player accept" $ do
-          view openTrades accepted `shouldBe` [Offer tradeOffer', acceptance']
+          view openTrades accepted `shouldBe` [acceptedOffer, acceptance']
           let vA = view validActions g'
           vA `shouldSatisfy` elem complete'
 
         let (completed, _) = runGame (update complete') accepted randRolled
+        let afterTradeP1 = ((view players completed) !! (fromPlayerIndex pI))^.resources
+        let afterTradeP2 = ((view players completed) !! (fromPlayerIndex aPI))^.resources
 
         it "should let the first player complete the trade" $ do
           view openTrades completed `shouldBe` []
+          ore beforeTradeP1 `shouldSatisfy` (> (ore afterTradeP1))
+          ore beforeTradeP2 `shouldSatisfy` (< (ore afterTradeP2))
+          wheat beforeTradeP1 `shouldSatisfy` (< (wheat afterTradeP1))
+          wheat beforeTradeP2 `shouldSatisfy` (> (wheat afterTradeP2))
+
       it "should allow for building, according to resources" $ do
-        let enoughForSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
-        let unbuiltLeft p = any (== (unbuilt settlement)) (p^.constructed)
-        let spaceOnBoard p g = not . null $ validSettlementsFor (color p) (g^.board)
-        let canBuildSettlement p = enoughForSettlement p && unbuiltLeft p
-        let isCurrentPlayer p g = p^.playerIndex == view currentPlayer g
+        let n = 200
+        -- let enoughForSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
+        -- let unbuiltLeft p = any (== (unbuilt settlement)) (p^.constructed)
+        -- let spaceOnBoard p g = not . null $ validSettlementsFor (color p) (g^.board)
+        -- let canBuildSettlement p = enoughForSettlement p && unbuiltLeft p
+        -- let isCurrentPlayer p g = p^.playerIndex == view currentPlayer g
         let isBuildSettlement x = isSettlement `fmap` (x ^? action.item) == Just True
-        let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g && spaceOnBoard p g
-        let findSuitable g = findIndex suitable $ zip (view players g) (repeat g) 
-        let maybeGame = find (\(g, _) -> isJust $ findSuitable g) $ take 200 $ drop 16 gs
-        if isJust maybeGame
+        -- let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g && spaceOnBoard p g
+        -- let findSuitable g = findIndex suitable $ zip (view players g) (repeat g) 
+        let findSuitable (g,_) = any isBuildSettlement $ view validActions g
+        let maybeGameIndex = findIndex findSuitable $ take n gs
+
+        if isJust maybeGameIndex
         then do
-          let g' = fst $ fromJust maybeGame
+          let gI' = fromJust maybeGameIndex
+          let g' = fst $ (gs !! gI')
           let vA = view validActions g'
           -- let suitablePI = toPlayerIndex findSuitable g' 
           vA `shouldSatisfy` (any isBuildSettlement)
-        else fail "couldn't find a player able to build a settlement after 200 actions"
+        else fail $ "couldn't find a player able to build a settlement after " ++ (show n) ++ " actions"
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
         let (robbed', _) = runGame updateForRoll rolled7 randRolled
         view phase robbed' `shouldBe` Special MovingRobber
@@ -199,9 +216,13 @@ spec = do
         let (g', _) = runGame (update playCard') withRoadBuilding randRolled
         view phase g' `shouldBe` Special (FreeRoads 2)
       it "should transition to Special Inventing when an Invention card is played" $ do
-        pending
+        let playCard' = mkPlayCard (toPlayerIndex 0) Invention
+        let (g', _) = runGame (update playCard') withInvention randRolled
+        view phase g' `shouldBe` Special Inventing
       it "should transition to Special Monopolizing when a Monopoly card is played" $ do
-        pending
+        let playCard' = mkPlayCard (toPlayerIndex 0) Monopoly
+        let (g', _) = runGame (update playCard') withMonopoly randRolled
+        view phase g' `shouldBe` Special Monopolizing
 
     context "in the Special phase" $ do
       context "RobberAttack" $ do

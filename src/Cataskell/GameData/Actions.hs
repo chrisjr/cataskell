@@ -12,7 +12,6 @@ import Cataskell.GameData.Player
 import Control.Lens
 import Data.Monoid (mempty)
 import qualified Data.Map.Strict as Map
-import Control.Exception (assert)
 import GHC.Generics (Generic)
 
 data TradeOffer = TradeOffer 
@@ -97,6 +96,11 @@ isTradeAction trade' = case trade' of
   PlayerAction _ (Trade _) -> True
   _ -> False
 
+toOffer :: TradeAction -> Maybe TradeOffer
+toOffer trade' = case trade' of
+  Offer x -> Just x
+  _ -> Nothing
+
 -- | Create an empty Discard action
 mkDiscard :: (PlayerIndex, Int) -> GameAction
 mkDiscard (pI, currentTotal)
@@ -173,13 +177,12 @@ cancel o@(TradeOffer _ _ pI)
       { _actor = pI
       , _action = Trade (CancelTrade o) }
 
-complete :: TradeAction -> TradeAction -> Maybe GameAction
-complete p1offer p2acceptance = do
-  let offer' = p1offer ^. offer
+complete :: TradeAction -> Maybe GameAction
+complete acceptance = do
+  let offer' = acceptance ^. offer
   let p1 = offer' ^. offeredBy
-  p2 <- p2acceptance ^? accepter
-  let offer'' = p2acceptance ^. offer
-  return $ assert (offer' == offer'') PlayerAction
+  p2 <- acceptance ^? accepter
+  return $ PlayerAction
       { _actor = p1
       , _action = Trade (CompleteTrade { _offer = offer'
                                        , _accepter = p2

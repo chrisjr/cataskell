@@ -51,12 +51,18 @@ library
 executable cataskell-cli
   main-is:           Main.hs
   -- other-extensions:    
-  build-depends:      base
-                    , cataskell
-                    , fgl
-                    , fgl-visualize
-  hs-source-dirs:     cataskell-cli
-  default-language:   Haskell2010
+  build-depends:     base
+                   , cataskell
+                   , fgl
+                   , aeson
+                   , containers
+                   , random
+                   , random-shuffle
+                   , MonadRandom
+                   , mtl
+                   , lens
+  hs-source-dirs:    cataskell-cli
+  default-language:  Haskell2010
 
 test-suite tests
   type:               exitcode-stdio-1.0

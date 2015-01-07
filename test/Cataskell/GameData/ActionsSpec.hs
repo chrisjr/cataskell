@@ -72,14 +72,16 @@ spec = do
       it "may contain a reason for rejection" $ do
         p3reject ^? action.trade.reason `shouldBe` (Just (Just "nope"))
 
-    let p1complete = fromJust $ complete (Offer offer') (fromJust $ p2accept^? action.trade)
+    let p1complete = fromJust $ complete (fromJust $ p2accept^? action.trade)
     describe "A CompleteTrade" $ do
       it "can be checked against the resources of both players" $ do
         p1 `shouldSatisfy` (\p -> enoughFor (p1complete ^? action.trade.offer.offering) p == (Just True))
         p2 `shouldSatisfy` (\p -> enoughFor (p1complete ^? action.trade.offer.asking) p == (Just True))
     describe "A CancelTrade" $ do
       it "should clear an extant trade offer from this player" $ do
-        pendingWith "need GameState and update functions to test"
+        let c = cancel offer'
+        c `shouldSatisfy` (\x -> (x^.actor) == (p1^.playerIndex))
+        c `shouldSatisfy` (\x -> (x^?!action.trade.offer.offeredBy) == (p1^.playerIndex))
   describe "A Discard action" $ do
     it "should have a necessary amount to discard" $ do
       let dAction = DiscardAction { _amountToDiscard = 4, _resourcesDiscarding = mempty}

@@ -1,9 +1,12 @@
-import Cataskell.BoardGraph
-import Cataskell.GameData.Location
-import Data.Graph.Inductive.Dot
-import Data.Graph.Inductive.Basic
+import Cataskell.Game
+import Control.Monad.Random
+import Control.Monad.State
+import Control.Lens
+import System.Random
 
 main :: IO ()
 main = do
-  let dot = showDot (fglToDot $ elfilter (\x -> edgeType x == Between) boardGraph)
-  writeFile "board.dot" dot
+  let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
+  let gs = iterate (\(x, r) -> runRand (execStateT randomAct x) r) (initialGame, r')
+  let gsActions = map (view lastAction . fst) $ take 100 gs
+  forM_ gsActions print

@@ -8,7 +8,7 @@ import Control.Monad.State
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty, (<>))
-import Data.Maybe (fromJust, isJust, catMaybes, mapMaybe)
+import Data.Maybe (fromJust, isJust, catMaybes, mapMaybe, listToMaybe)
 import Data.List (find, findIndex, elemIndex, nub)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -43,6 +43,7 @@ data Game = Game
   , _rolled :: Maybe Int
   , _validActions :: [GameAction]
   , _openTrades :: [TradeAction]
+  , _lastAction :: Maybe GameAction
   , _allCards :: [Item]
   , _winner :: Maybe PlayerIndex
   } deriving (Eq, Ord, Show, Read, Generic)
@@ -64,6 +65,7 @@ newGame pNames = do
                 , _rolled = Nothing
                 , _validActions = possibleInitialSettlements (head ps) b
                 , _openTrades = []
+                , _lastAction = Nothing
                 , _allCards = cards
                 , _winner = Nothing }
 
@@ -83,6 +85,7 @@ update action' = do
   let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
   let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
 
+  when (done) $ lastAction .= Just action'
   when (done && builtFreeRoad) $ do
     if (p == Initial) then progress
     else handleFreeRoads p
@@ -264,9 +267,9 @@ getCard playerIndex' = do
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade playerIndex' tradeAction' = do
   case tradeAction' of
-    Offer _ -> openTrades <>= [tradeAction']
-    Accept _ _ -> openTrades <>= [tradeAction']
-    Reject _ _ _ -> openTrades <>= [tradeAction']
+    Offer _ -> addAndUpdateTrades tradeAction'
+    Accept _ _ -> addAndUpdateTrades tradeAction'
+    Reject _ _ _ -> addAndUpdateTrades tradeAction'
     CompleteTrade offer' accepterIndex' -> do
       players . (ix $ fromPlayerIndex playerIndex') . resources <>= offer'^.asking
       players . (ix $ fromPlayerIndex playerIndex') . resources <>= mkNeg (offer'^.offering)
@@ -275,6 +278,14 @@ doTrade playerIndex' tradeAction' = do
       openTrades .= []
     CancelTrade _ -> openTrades .= []
     Exchange offer' -> doExchange playerIndex' offer'
+
+addAndUpdateTrades :: (RandomGen g) => TradeAction -> GameState g
+addAndUpdateTrades tradeAction' = do
+  openTrades <>= [tradeAction']
+  currentPlayerIndex <- use currentPlayer
+  validActions' <- use validActions
+  newTrades <- possibleTradeActions currentPlayerIndex
+  validActions .= nub (validActions' ++ newTrades)
 
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
 doExchange playerIndex' offer' = do
@@ -377,10 +388,34 @@ possiblePurchases playerIndex' = do
 
 possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleTradeActions playerIndex' = do
-  -- openTrades' <- use openTrades
-  -- let accept' = accept 
-  -- let completes = 
-  return [mkOffer playerIndex' mempty mempty] -- :completes
+  openTrades' <- use openTrades
+  let base = [mkOffer playerIndex' mempty mempty]
+  let offer' = listToMaybe $ mapMaybe toOffer openTrades'
+
+  if isJust offer'
+  then do
+    let offer'' = fromJust offer'
+    acceptances <- mkAccept offer''
+    others <- otherPlayers
+    let otherIs = map (view playerIndex) others
+    let rejects = map (reject offer'' Nothing) otherIs
+    let existingAccepts = filter (\x -> case x of Accept _ _ -> True; _ -> False) openTrades'
+    let completes = mapMaybe complete existingAccepts
+    let cancels = if (offer''^.offeredBy == playerIndex') then [cancel offer''] else []
+    return $ acceptances ++ rejects ++ cancels ++ completes
+  else return base
+
+otherPlayers :: (RandomGen g) => GameStateReturning g [Player]
+otherPlayers = do
+  current <- use currentPlayer
+  uses players (filter ((/= current) . view playerIndex))
+
+mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g [GameAction]
+mkAccept offer' = do
+  ps <- otherPlayers
+  let ps' = filter (\p -> sufficient (view resources p) (offer'^.asking)) ps
+  let couldAccept = map (view playerIndex) ps'
+  return $ map (accept offer') couldAccept
 
 possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleDevelopmentCards playerIndex' = do
