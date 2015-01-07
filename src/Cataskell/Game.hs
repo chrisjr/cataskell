@@ -8,7 +8,7 @@ import Control.Monad.State
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty, (<>))
-import Data.Maybe (fromJust, isJust, catMaybes, mapMaybe, listToMaybe)
+import Data.Maybe (fromJust, isJust, mapMaybe, listToMaybe)
 import Data.List (find, findIndex, elemIndex, nub)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -43,7 +43,7 @@ data Game = Game
   , _rolled :: Maybe Int
   , _validActions :: [GameAction]
   , _openTrades :: [TradeAction]
-  , _lastAction :: Maybe GameAction
+  , _lastAction :: Maybe (GameAction, Bool)
   , _allCards :: [Item]
   , _winner :: Maybe PlayerIndex
   } deriving (Eq, Ord, Show, Read, Generic)
@@ -57,20 +57,23 @@ newGame pNames = do
   shuffledNames <- shuffleM pNames
   cards <- shuffleM allDevelopmentCards
   let ps = mkPlayers shuffledNames
-  return $ Game { _phase = Initial 
-                , _board = b
-                , _players = ps
-                , _currentPlayer = toPlayerIndex 0
-                , _turnAdvanceBy = 1
-                , _rolled = Nothing
-                , _validActions = possibleInitialSettlements (head ps) b
-                , _openTrades = []
-                , _lastAction = Nothing
-                , _allCards = cards
-                , _winner = Nothing }
+  return Game { _phase = Initial 
+              , _board = b
+              , _players = ps
+              , _currentPlayer = toPlayerIndex 0
+              , _turnAdvanceBy = 1
+              , _rolled = Nothing
+              , _validActions = possibleInitialSettlements (head ps) b
+              , _openTrades = []
+              , _lastAction = Nothing
+              , _allCards = cards
+              , _winner = Nothing }
 
 runGame :: (RandomGen g) => GameState g -> Game -> g -> (Game, g)
-runGame stModify game stdgen = runRand (execStateT stModify game) stdgen
+runGame stModify game = runRand (execStateT stModify game)
+
+evalGame :: (RandomGen g) => GameStateReturning g a -> Game -> g -> a
+evalGame stReturn game = evalRand (evalStateT stReturn game)
 
 findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
@@ -85,10 +88,8 @@ update action' = do
   let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
   let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
 
-  when (done) $ lastAction .= Just action'
-  when (done && builtFreeRoad) $ do
-    if (p == Initial) then progress
-    else handleFreeRoads p
+  lastAction .= Just (action', done)
+  when (done && builtFreeRoad) $ if p == Initial then progress else handleFreeRoads p
   when (done && p == Special MovingRobber && movedRobber) backToNormal
 
 -- | Move from one game state to the next
@@ -96,14 +97,14 @@ handleFreeRoads :: (RandomGen g) => Phase -> GameState g
 handleFreeRoads phase' = do
   playerIndex' <- use currentPlayer
   when (phase' == Special (FreeRoads 2)) $ toSpecialPhase (FreeRoads 1) playerIndex'
-  when (phase' == Special (FreeRoads 1)) $ backToNormal
+  when (phase' == Special (FreeRoads 1)) backToNormal
   return ()
 
 -- | Checks that the action is valid and executes it if so
 checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 checkAndExecute action' = do
   valid <- isValid action'
-  when (valid) $ doAction action'
+  when valid $ doAction action'
   return valid
 
 -- | Returns true iff all preconditions are met
@@ -111,31 +112,31 @@ isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 isValid action' = do
   current <- get
   let predicates' = preconditions action'
-  let valid = and $ map ($ current) predicates'
+  let valid = all ($ current) predicates'
   return valid
 
 -- | Creates a predicate that is true when a game is in one of the specified phases.
-phaseOneOf :: [Phase] -> (Game -> Bool)
-phaseOneOf phases = (flip elem) phases . view phase
+phaseOneOf :: [Phase] -> Game -> Bool
+phaseOneOf phases = flip elem phases . view phase
 
 -- | Creates a predicate that checks if a player has an item
-hasItem :: Item -> PlayerIndex -> (Game -> Bool)
+hasItem :: Item -> PlayerIndex -> Game -> Bool
 hasItem itemToFind pI = elem itemToFind . playerItems
-  where playerItems = view (players.(ix $ fromPlayerIndex pI).constructed)
+  where playerItems = view (players.ix (fromPlayerIndex pI).constructed)
 
 -- | Creates a predicate that checks if a player has enough resources for something.
-hasResourcesFor :: ResourceCount -> PlayerIndex -> (Game -> Bool)
-hasResourcesFor cost' pI = (flip sufficient) cost' . playerResources
-  where playerResources = view (players.(ix $ fromPlayerIndex pI).resources)
+hasResourcesFor :: ResourceCount -> PlayerIndex -> Game -> Bool
+hasResourcesFor cost' pI = flip sufficient cost' . playerResources
+  where playerResources = view (players.ix (fromPlayerIndex pI).resources)
 
 -- | Creates a predicate that checks if a player has enough resources for an item.
-hasResourcesForItem :: Item -> PlayerIndex -> (Game -> Bool)
-hasResourcesForItem itemToBuy pI = hasResourcesFor (cost itemToBuy) pI
+hasResourcesForItem :: Item -> PlayerIndex -> Game -> Bool
+hasResourcesForItem itemToBuy = hasResourcesFor (cost itemToBuy)
 
 getPlayer :: (RandomGen g) => PlayerIndex -> GameStateReturning g Player
 getPlayer pI = do
   current <- get
-  return $ current ^?! players . (ix $ fromPlayerIndex pI)
+  return $ current ^?! players . ix (fromPlayerIndex pI)
 
 scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g Int
 scoreFor pI = do
@@ -147,7 +148,7 @@ preconditions :: GameAction -> [Game -> Bool]
 preconditions (PlayerAction playerIndex' action')
   = case action' of
       Roll -> [ phaseOneOf [Normal]
-              , (\g -> view currentPlayer g == playerIndex')]
+              , \g -> view currentPlayer g == playerIndex']
       BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)]]
       SpecialAction x -> case x of
         M _ -> [phaseOneOf [Special Monopolizing]]
@@ -155,20 +156,20 @@ preconditions (PlayerAction playerIndex' action')
         R _ -> [phaseOneOf [Special MovingRobber]]
       PlayCard x -> [ phaseOneOf [Normal]
                     , hasItem (Card x) playerIndex'
-                    , (\_ -> x /= VictoryPoint)] -- can't play a victory point
+                    , \_ -> x /= VictoryPoint] -- can't play a victory point
       Purchase x -> [ phaseOneOf [Normal]
                     , hasResourcesForItem x playerIndex']
       Trade x -> case x of
         Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
         Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) playerIndex']
-        Reject _ _ _ -> [phaseOneOf [Normal]]
+        Reject {} -> [phaseOneOf [Normal]]
         CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
                                           , hasResourcesFor (offer'^.offering) playerIndex'
                                           , hasResourcesFor (offer'^.asking) accepterIndex']
         CancelTrade _ -> [phaseOneOf [Normal]]
         Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
       Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
-                                     , (\_ -> totalResources r == i) ]
+                                     , \_ -> totalResources r == i ]
       EndTurn -> [phaseOneOf [Normal]]
 
 doAction :: (RandomGen g) => GameAction -> GameState g
@@ -181,13 +182,11 @@ doAction act'
             doBuild actorIndex c'
             player' <- getPlayer actorIndex
             let totalSettlements = length . filter isSettlement $ player' ^. constructed
-            if (deconstruct c' == Potential (H Settlement))
-            then do
+            when (deconstruct c' == Potential (H Settlement)) $ do
               when (totalSettlements == 2) $ giveStartingResources actorIndex
               let c'' = fromJust $ c' ^? onPoint
               newRoads <- uses (board.roads) (initialRoadsFor player' c'')
               validActions .= newRoads
-            else return ()
           SpecialAction x -> case x of
             M monopoly' -> doMonopoly actorIndex monopoly'
             I invention' -> doInvention actorIndex invention'
@@ -217,67 +216,62 @@ doBuild :: (RandomGen g) => PlayerIndex -> Construct -> GameState g
 doBuild p' construct' = do
   let potential = deconstruct construct'
   b <- use board
-  replaceInventory p' potential (Just $ Building construct') $ do
-    board .= build construct' b
+  replaceInventory p' potential (Just $ Building construct') $ board .= build construct' b
 
 inventory :: (RandomGen g) => PlayerIndex -> GameStateReturning g [Item]
-inventory playerIndex' = getPlayer playerIndex' >>= (return . view constructed)
+inventory playerIndex' = liftM (view constructed) $ getPlayer playerIndex'
 
 replaceInventory :: (RandomGen g) => PlayerIndex -> Item -> Maybe Item -> GameState g -> GameState g
 replaceInventory playerIndex' old' new' extraActions = do
   hasLeft <- use (players . ix (fromPlayerIndex playerIndex') . constructed)
   let i = elemIndex old' hasLeft
-  if (isJust i)
-  then do
+  when (isJust i) $ do
     let i' = fromJust i
-    if (isJust new')
-    then do
-      players . ix (fromPlayerIndex playerIndex') . constructed . ix i' .= fromJust new'
-    else do
-      players . ix (fromPlayerIndex playerIndex') . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
+    if isJust new'
+    then players . ix (fromPlayerIndex playerIndex') . constructed . ix i' .= fromJust new'
+    else players . ix (fromPlayerIndex playerIndex') . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
     extraActions
-  else return ()
 
 addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
 addToResources i res = players . ix (fromPlayerIndex i) . resources <>= res
 
 doPurchase :: (RandomGen g) => PlayerIndex -> Item -> GameState g
-doPurchase playerIndex' item' = do
-  case item' of
-    (Building r@(Roadway (OnEdge _ _))) ->
-      replaceInventory playerIndex' (deconstruct r) (Just item') $ return ()
-    (Building s@(Edifice (OnPoint _ _ Settlement))) ->
-      replaceInventory playerIndex' (deconstruct s) (Just item') $ return ()
-    (Building c@(Edifice (OnPoint p' c' City))) ->
-      replaceInventory playerIndex' (deconstruct c) (Just item') $ do
-        let settlementWas = Building (Edifice (OnPoint p' c' Settlement))
-        replaceInventory playerIndex' (settlementWas) (Just (unbuilt settlement)) $ return ()
-    Card _ -> getCard playerIndex'
-    Potential DevelopmentCard -> getCard playerIndex'
-    Potential (H _) -> return () -- can't buy potential settlement without location
-    Potential Road -> return () -- can't buy potential road without location
+doPurchase playerIndex' item'
+  = case item' of
+      (Building r@(Roadway (OnEdge _ _))) ->
+        replaceInventory playerIndex' (deconstruct r) (Just item') $ return ()
+      (Building s@(Edifice (OnPoint _ _ Settlement))) ->
+        replaceInventory playerIndex' (deconstruct s) (Just item') $ return ()
+      (Building c@(Edifice (OnPoint p' c' City))) ->
+        replaceInventory playerIndex' (deconstruct c) (Just item') $ do
+          let settlementWas = Building (Edifice (OnPoint p' c' Settlement))
+          replaceInventory playerIndex' settlementWas (Just (unbuilt settlement)) $ return ()
+      Card _ -> getCard playerIndex'
+      Potential DevelopmentCard -> getCard playerIndex'
+      Potential (H _) -> return () -- can't buy potential settlement without location
+      Potential Road -> return () -- can't buy potential road without location
 
 getCard :: (RandomGen g) => PlayerIndex -> GameState g
 getCard playerIndex' = do
   allCards' <- use allCards
   let (cardTop, restOfCards) = splitAt 1 allCards'
-  players . (ix $ fromPlayerIndex playerIndex') . constructed <>= cardTop
+  players . ix (fromPlayerIndex playerIndex') . constructed <>= cardTop
   allCards .= restOfCards
 
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
-doTrade playerIndex' tradeAction' = do
-  case tradeAction' of
-    Offer _ -> addAndUpdateTrades tradeAction'
-    Accept _ _ -> addAndUpdateTrades tradeAction'
-    Reject _ _ _ -> addAndUpdateTrades tradeAction'
-    CompleteTrade offer' accepterIndex' -> do
-      players . (ix $ fromPlayerIndex playerIndex') . resources <>= offer'^.asking
-      players . (ix $ fromPlayerIndex playerIndex') . resources <>= mkNeg (offer'^.offering)
-      players . (ix $ fromPlayerIndex accepterIndex') . resources <>= offer'^.offering
-      players . (ix $ fromPlayerIndex accepterIndex') . resources <>= mkNeg (offer'^.asking)
-      openTrades .= []
-    CancelTrade _ -> openTrades .= []
-    Exchange offer' -> doExchange playerIndex' offer'
+doTrade playerIndex' tradeAction'
+  = case tradeAction' of
+      Offer _ -> addAndUpdateTrades tradeAction'
+      Accept _ _ -> addAndUpdateTrades tradeAction'
+      Reject{} -> addAndUpdateTrades tradeAction'
+      CompleteTrade offer' accepterIndex' -> do
+        players . ix (fromPlayerIndex playerIndex') . resources <>= offer'^.asking
+        players . ix (fromPlayerIndex playerIndex') . resources <>= mkNeg (offer'^.offering)
+        players . ix (fromPlayerIndex accepterIndex') . resources <>= offer'^.offering
+        players . ix (fromPlayerIndex accepterIndex') . resources <>= mkNeg (offer'^.asking)
+        openTrades .= []
+      CancelTrade _ -> openTrades .= []
+      Exchange offer' -> doExchange playerIndex' offer'
 
 addAndUpdateTrades :: (RandomGen g) => TradeAction -> GameState g
 addAndUpdateTrades tradeAction' = do
@@ -291,12 +285,10 @@ doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
 doExchange playerIndex' offer' = do
   let askTotal = totalResources $ offer'^.asking
   harborFuncs <- getHarbors playerIndex'
-  let canGetTotal = maximum $ map ($ offer'^.offering) $ (genericHarborDiscount 4):harborFuncs
-  if askTotal <= canGetTotal
-  then do
+  let canGetTotal = maximum $ map ($ offer'^.offering) $ genericHarborDiscount 4:harborFuncs
+  when (askTotal <= canGetTotal) $ do
     addToResources playerIndex' $ offer'^.asking
     addToResources playerIndex' (mkNeg $ offer'^.offering)
-  else return ()
 
 getPlayerBuildings :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Map.Map Point OnPoint)
 getPlayerBuildings playerIndex' = do
@@ -311,16 +303,15 @@ getHarbors playerIndex' = do
   playerBuildings <- getPlayerBuildings playerIndex'
   let harbors' = b^.harbors
   let myHarbors = Map.elems $ Map.intersectionWith (\_ harbor' -> harbor') playerBuildings harbors'
-  return $ map (harborDiscount) myHarbors
+  return $ map harborDiscount myHarbors
 
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
-doDiscard playerIndex' (DiscardAction _ r) = do
-  players . ix (fromPlayerIndex playerIndex') . resources <>= (mkNeg r)
+doDiscard playerIndex' (DiscardAction _ r)
+  = players . ix (fromPlayerIndex playerIndex') . resources <>= mkNeg r
 
 doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
-doPlayCard playerIndex' card' = do
-  replaceInventory playerIndex' (Card card') Nothing $ do
-    case card' of
+doPlayCard playerIndex' card'
+  = replaceInventory playerIndex' (Card card') Nothing $ case card' of
       RoadBuilding -> toSpecialPhase (FreeRoads 2) playerIndex'
       Knight -> toSpecialPhase MovingRobber playerIndex'
       Invention -> toSpecialPhase Inventing playerIndex'
@@ -334,27 +325,27 @@ myFoldM a1 lst f = foldM f a1 lst
 doMonopoly :: (RandomGen g) => PlayerIndex -> Monopoly -> GameState g
 doMonopoly playerIndex' (MonopolyOn resType) = do
   ptotal <- uses players length
-  newSum <- myFoldM mempty [0 .. ptotal] $ \a b -> do
-    if b /= (fromPlayerIndex playerIndex')
+  newSum <- myFoldM mempty [0 .. ptotal] $ \a b ->
+    if b /= fromPlayerIndex playerIndex'
     then do
       res <- use (players . ix b . resources)
       let res' = filteredResCount resType res
-      players . ix b . resources <>= (mkNeg res')
+      players . ix b . resources <>= mkNeg res'
       return $ a <> res'
     else return a
   players . ix (fromPlayerIndex playerIndex') . resources <>= newSum
   backToNormal
 
 doInvention :: (RandomGen g) => PlayerIndex -> Invention -> GameState g
-doInvention playerIndex' (InventionOf res) = do
-  players . ix (fromPlayerIndex playerIndex') . resources <>= res
+doInvention playerIndex' (InventionOf res)
+  = players . ix (fromPlayerIndex playerIndex') . resources <>= res
 
 doMoveRobber :: (RandomGen g) => MoveRobber -> GameState g
 doMoveRobber (MoveRobber dest) = do
   h <- use (board . hexes)
   let (robberLoc, _) = fromJust $ find (_hasRobber . snd) $ Map.toList h
-  board . hexes . (ix robberLoc) . hasRobber .= False
-  board . hexes . (ix dest) . hasRobber .= True
+  board . hexes . ix robberLoc . hasRobber .= False
+  board . hexes . ix dest . hasRobber .= True
   backToNormal
 
 doRoll :: (RandomGen g) => GameState g
@@ -362,7 +353,7 @@ doRoll = do
   d1 <- getRandomR (1, 6)
   d2 <- getRandomR (1, 6)
   let r' = d1 + d2
-  rolled .= (Just r')
+  rolled .= Just r'
   updateForRoll
 
 genPlayerActions :: (RandomGen g) => GameState g
@@ -383,8 +374,8 @@ possiblePurchases playerIndex' = do
   let cards' = if sufficient (player'^.resources) (cost $ Potential DevelopmentCard)
                then [purchase playerIndex' (Potential DevelopmentCard)]
                else []
-  let mkPurchases = map ((purchase playerIndex') . Building)
-  return $ cards' ++ (concatMap mkPurchases [roads', settlements', cities'])
+  let mkPurchases = map (purchase playerIndex' . Building)
+  return $ cards' ++ concatMap mkPurchases [roads', settlements', cities']
 
 possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleTradeActions playerIndex' = do
@@ -420,7 +411,7 @@ mkAccept offer' = do
 possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleDevelopmentCards playerIndex' = do
   items' <- inventory playerIndex'
-  let cards' = catMaybes $ map (\x -> x ^? card) items'
+  let cards' = mapMaybe (^? card) items'
   return $ map (mkPlayCard playerIndex') cards'
 
 canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
@@ -438,9 +429,9 @@ robbableSpotsFor playerIndex' = do
   let playersColors = zip ps (map color ps)
   let protected = nub $ ownColor:(map snd $ filter (\(p,_) -> view displayScore p > 2) playersColors)
   let isValidPoint cp = let myNeighbors = (Map.!) centersToNeighbors cp
-                            neighborBuildings = mapMaybe ((flip Map.lookup) buildings') myNeighbors
+                            neighborBuildings = mapMaybe (`Map.lookup` buildings') myNeighbors
                             colors' = map color neighborBuildings
-                        in  all (not . (flip elem) protected) colors'
+                        in  all (not . flip elem protected) colors'
   return $ filter isValidPoint hexCenterPoints
 
 -- | Called on EndTurn action or in initial phase
@@ -455,10 +446,10 @@ progress = do
   let newAdv x | x == 3 && adv == 1 = 0
                | x == 3 && adv == 0 = -1
                | otherwise = adv
-  nextPlayer <- uses players ((flip (!!)) $ fromPlayerIndex next')
+  nextPlayer <- uses players (flip (!!) $ fromPlayerIndex next')
   nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
   case p of
-    Initial -> if (currentPlayerIndex == 0 && adv == -1) 
+    Initial -> if currentPlayerIndex == 0 && adv == -1
                then do
                 turnAdvanceBy .= 1
                 initialToNormal
@@ -519,19 +510,16 @@ toSpecialPhase special' playerIndex' = do
         ps <- use players
         let pRes = map (\p -> (p^.playerIndex, totalResources (p ^. resources))) ps
         let mustDiscard = map mkDiscard $ filter (\(_, r) -> r > 7) pRes
-        if (length mustDiscard > 0)
-        then do
-          validActions .= mustDiscard
+        if not $ null mustDiscard
+        then validActions .= mustDiscard
         else toSpecialPhase MovingRobber playerIndex'
       MovingRobber -> do
         robberMoves <- canMoveRobberTo playerIndex'
         if null robberMoves
         then backToNormal
         else validActions .= robberMoves
-      Inventing -> do
-        validActions .= map (invent playerIndex') possibleInventions
-      Monopolizing -> do
-        validActions .= map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
+      Inventing -> validActions .= map (invent playerIndex') possibleInventions
+      Monopolizing -> validActions .= map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
 
 -- | Game won by player p.
 wonBy :: (RandomGen g) => PlayerIndex -> GameState g
