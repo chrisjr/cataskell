@@ -31,3 +31,7 @@ spec = do
       listToDuple ([] :: [Int]) `shouldBe` Nothing
       listToDuple [1] `shouldBe` Nothing
       listToDuple [1, 2, 3] `shouldBe` Nothing
+  describe "iterate'" $ do
+    it "should act as a strict version of iterate" $ do
+      let n = 1000000
+      iterate' (+1) 0 !! n `shouldBe` n

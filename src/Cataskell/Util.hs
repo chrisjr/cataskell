@@ -20,3 +20,6 @@ windowed size ls@(_:xs) =
 listToDuple :: (Show a) => [a] -> Maybe (a, a)
 listToDuple (x:y:[]) = Just (x, y)
 listToDuple _ = Nothing
+
+iterate' :: (a -> a) -> a -> [a]
+iterate' f x = x `seq` (x : iterate' f (f x))

@@ -8,6 +8,7 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
+import Cataskell.Util (iterate')
 import Control.Monad.Random
 import Control.Monad.Identity
 import Control.Monad.State
@@ -30,7 +31,10 @@ fromInitialGame (InitialGame x) = x
 instance Arbitrary Game where
   arbitrary = do
     initial <- arbitrary
-    return $ fromInitialGame initial
+    stdGen <- (arbitrary :: Gen StdGen)
+    numSteps <- choose (0, 50)
+    let randomGs = iterate' (\(x, r) -> runRand (execStateT randomAct x) r) (initial, stdGen)
+    return $ fst (randomGs !! numSteps)
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -56,9 +60,13 @@ spec = do
       \game stdGen -> let i' = evalRand (evalStateT (findPlayerByColor Blue) (game :: Game)) (stdGen :: StdGen)
                           i = fromPlayerIndex i'
                       in i >= 0 && i < 4
-    it "has a list of valid next actions, except at the end" $ property $
+    it "has a non-zero list of next actions, except at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
                in (n > 0) || (view phase game == End)
+    it "has only valid actions in the validActions list" $ property $
+      \game stdGen -> let vA = (game :: Game) ^. validActions
+                          isValid' x = evalRand (evalStateT (isValid x) game) (stdGen :: StdGen)
+                      in all isValid' vA
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores = map (view score) $ game ^. players
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores
@@ -68,7 +76,7 @@ spec = do
 
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
 
-    let gs = iterate (\(x, r) -> runRand (execStateT randomAct x) r) (initialGame, r')
+    let gs = iterate (\(x, r) -> runGame randomAct x r) (initialGame, r')
     let (normalGame, _) = gs !! 16
 
     context "in Initial phase" $ do
@@ -211,6 +219,10 @@ spec = do
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
         let (robbed', _) = runGame updateForRoll rolled7 randRolled
         view phase robbed' `shouldBe` Special MovingRobber
+      it "should transition to Special RobberAttack when a Knight is played" $ do
+        let playCard' = mkPlayCard (toPlayerIndex 0) Knight
+        let (g', _) = runGame (update playCard') withKnight randRolled
+        view phase g' `shouldBe` Special MovingRobber
       it "should transition to Special FreeRoads when a RoadBuilding card is played" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
         let (g', _) = runGame (update playCard') withRoadBuilding randRolled
