@@ -158,14 +158,20 @@ accept offer' accepter'
       , _action = Trade (Accept { _offer = offer'
                                 , _accepter = accepter' }) }
 
-reject :: TradeOffer -> PlayerIndex -> Maybe String -> GameAction
-reject offer' rejecter' maybeReason
+reject :: TradeOffer -> Maybe String -> PlayerIndex -> GameAction
+reject offer' maybeReason rejecter'
   = PlayerAction
       { _actor = rejecter'
       , _action = Trade (Reject { _offer = offer'
                                 , _rejecter = rejecter'
                                 , _reason = maybeReason })
       }
+
+cancel :: TradeOffer -> GameAction
+cancel o@(TradeOffer _ _ pI)
+  = PlayerAction
+      { _actor = pI
+      , _action = Trade (CancelTrade o) }
 
 complete :: TradeAction -> TradeAction -> Maybe GameAction
 complete p1offer p2acceptance = do
@@ -205,3 +211,8 @@ mkEndTurn :: PlayerIndex -> GameAction
 mkEndTurn pI = PlayerAction
   { _actor = pI
   , _action = EndTurn }
+
+mkMoveRobber :: PlayerIndex -> CentralPoint -> GameAction
+mkMoveRobber pI dest = PlayerAction
+  { _actor = pI
+  , _action = SpecialAction (R (MoveRobber dest)) }

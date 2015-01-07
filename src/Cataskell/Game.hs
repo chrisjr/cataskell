@@ -7,10 +7,9 @@ import Control.Monad.Random
 import Control.Monad.State
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
-import Control.Exception (assert)
-import Data.Monoid (mempty)
-import Data.Maybe (fromJust, isJust, catMaybes)
-import Data.List (findIndex, elemIndex)
+import Data.Monoid (mempty, (<>))
+import Data.Maybe (fromJust, isJust, catMaybes, mapMaybe)
+import Data.List (find, findIndex, elemIndex, nub)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -189,7 +188,7 @@ doAction act'
           SpecialAction x -> case x of
             M monopoly' -> doMonopoly actorIndex monopoly'
             I invention' -> doInvention actorIndex invention'
-            R moveRobber' -> doMoveRobber actorIndex moveRobber'
+            R moveRobber' -> doMoveRobber moveRobber'
           Purchase x -> doPurchase actorIndex x -- already checked resources
           Trade x -> doTrade actorIndex x
           Discard x -> doDiscard actorIndex x
@@ -317,14 +316,35 @@ doPlayCard playerIndex' card' = do
       Monopoly -> toSpecialPhase Monopolizing playerIndex'
       VictoryPoint -> return ()
 
+
+myFoldM :: Monad m => a -> [b] -> (a -> b -> m a) -> m a
+myFoldM a1 lst f = foldM f a1 lst
+
 doMonopoly :: (RandomGen g) => PlayerIndex -> Monopoly -> GameState g
-doMonopoly = assert False undefined
+doMonopoly playerIndex' (MonopolyOn resType) = do
+  ptotal <- uses players length
+  newSum <- myFoldM mempty [0 .. ptotal] $ \a b -> do
+    if b /= (fromPlayerIndex playerIndex')
+    then do
+      res <- use (players . ix b . resources)
+      let res' = filteredResCount resType res
+      players . ix b . resources <>= (mkNeg res')
+      return $ a <> res'
+    else return a
+  players . ix (fromPlayerIndex playerIndex') . resources <>= newSum
+  backToNormal
 
 doInvention :: (RandomGen g) => PlayerIndex -> Invention -> GameState g
-doInvention = assert False undefined
+doInvention playerIndex' (InventionOf res) = do
+  players . ix (fromPlayerIndex playerIndex') . resources <>= res
 
-doMoveRobber :: (RandomGen g) => PlayerIndex -> MoveRobber -> GameState g
-doMoveRobber = assert False undefined
+doMoveRobber :: (RandomGen g) => MoveRobber -> GameState g
+doMoveRobber (MoveRobber dest) = do
+  h <- use (board . hexes)
+  let (robberLoc, _) = fromJust $ find (_hasRobber . snd) $ Map.toList h
+  board . hexes . (ix robberLoc) . hasRobber .= False
+  board . hexes . (ix dest) . hasRobber .= True
+  backToNormal
 
 doRoll :: (RandomGen g) => GameState g
 doRoll = do
@@ -369,7 +389,24 @@ possibleDevelopmentCards playerIndex' = do
   return $ map (mkPlayCard playerIndex') cards'
 
 canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
-canMoveRobberTo _ = return $ [] -- assert False undefined
+canMoveRobberTo playerIndex' = do
+  robberSpots <- robbableSpotsFor playerIndex'
+  return $ map (mkMoveRobber playerIndex') robberSpots
+
+robbableSpotsFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g [CentralPoint]
+robbableSpotsFor playerIndex' = do
+  b <- use board
+  ps <- use players
+  let buildings' = getHabitations b
+  self <- getPlayer playerIndex'
+  let ownColor = color self
+  let playersColors = zip ps (map color ps)
+  let protected = nub $ ownColor:(map snd $ filter (\(p,_) -> view displayScore p > 2) playersColors)
+  let isValidPoint cp = let myNeighbors = (Map.!) centersToNeighbors cp
+                            neighborBuildings = mapMaybe ((flip Map.lookup) buildings') myNeighbors
+                            colors' = map color neighborBuildings
+                        in  all (not . (flip elem) protected) colors'
+  return $ filter isValidPoint hexCenterPoints
 
 -- | Called on EndTurn action or in initial phase
 progress :: (RandomGen g) => GameState g
@@ -423,7 +460,6 @@ distributeResources = do
         (\(c, res) -> do
           i <- findPlayerByColor c
           addToResources i res)
-
 
 -- | Move to Normal phase (from Initial)
 initialToNormal :: (RandomGen g) => GameState g

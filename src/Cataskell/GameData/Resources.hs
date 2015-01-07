@@ -82,3 +82,12 @@ resourceFromTerrain t
       Hill  -> mempty { brick = 1 }
       Mountain -> mempty { ore = 1 }
       Desert -> mempty
+
+filteredResCount :: ResourceType -> ResourceCount -> ResourceCount
+filteredResCount resType res
+  = case resType of
+      Lumber -> mempty { lumber = lumber res}
+      Wool -> mempty { wool = wool res }
+      Wheat -> mempty { wheat = wheat res }
+      Brick -> mempty { brick = brick res }
+      Ore -> mempty { ore = ore res }      

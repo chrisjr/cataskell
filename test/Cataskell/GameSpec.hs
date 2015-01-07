@@ -91,6 +91,9 @@ spec = do
     let (rolledOnce, randRolled) = gs !! 17
 
     let withRoadBuilding = (players . ix 0 . constructed) <>~ [Card RoadBuilding] $ rolledOnce
+    let withInvention = (players . ix 0 . constructed) <>~ [Card Invention] $ rolledOnce
+    let withMonopoly = (players . ix 0 . constructed) <>~ [Card Monopoly] $ rolledOnce
+    let withKnight = (players . ix 0 . constructed) <>~ [Card Knight] $ rolledOnce
     let rolled7 = rolled .~ Just 7 $ rolledOnce
 
     context "in Normal phase" $ do
@@ -105,18 +108,71 @@ spec = do
         let (starting, _)  = gs !! 16
         totalAsOf rolledOnce `shouldSatisfy` (> (totalAsOf starting))
 
-      let pI = view currentPlayer rolledOnce
+      it "should allow for a trade offer" $ do
+        let vA = view validActions rolledOnce
+        let cur = view currentPlayer rolledOnce
+        let pOffer = mkOffer cur (mempty { ore = 1} ) (mempty { wheat = 1 } )
+        vA `shouldSatisfy` (any (actionLike pOffer))
+
+      let playerWithOre g = let ps = view players g
+                            in view playerIndex `fmap` (find (\p -> (ore $ view resources p) >= 1) ps)
+      let playerWithWheat g = let ps = view players g
+                              in view playerIndex `fmap` (find (\p -> (wheat $ view resources p) >= 1) ps)
+
+      let wellResourced g = let o = playerWithOre g
+                                w = playerWithWheat g
+                                c = if isJust w
+                                    then let p = fromJust w
+                                         in p == (view currentPlayer g)
+                                    else False
+                                d = Normal == view phase g
+                            in isJust o && isJust w && c && d
+      let maybeFurtherAlong = find (\(g, _) -> wellResourced g) gs
+      let (furtherAlong, _) = fromJust maybeFurtherAlong
+
+      let pI = view currentPlayer furtherAlong
       let pOffer = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
       let tradeOffer' = fromJust $ pOffer ^? action.trade.offer
 
-      it "should allow for a trade offer" $ do
-        let vA = view validActions rolledOnce
-        vA `shouldSatisfy` (any (actionLike pOffer))
-
       context "when trading" $ do
-        it "should add it to the open trades" $ do
-          let (g', r') = runGame (update pOffer) rolledOnce randRolled
+        let (g', r') = runGame (update pOffer) furtherAlong randRolled
+        let others = views players (filter ((/= pI) . view playerIndex)) g'
+        let otherIs = map (view playerIndex) others
+        let acceptancesAll = map (accept tradeOffer') otherIs
+        let validAcceptance g accept' = let thisPI = accept'^?!action.trade.accepter
+                                            res = accept'^?!action.trade.offer.asking
+                                            p = fromJust $ views players (find ((== thisPI) . view playerIndex)) g
+                                        in  sufficient (view resources p) res
+        let acceptances = filter (validAcceptance g') acceptancesAll
+        let rejections = map (reject tradeOffer' Nothing) otherIs
+
+        it "should add an offer to the open trades" $ do
           view openTrades g' `shouldBe` [Offer tradeOffer']
+        it "should allow others to accept or reject" $ do
+          let vA = view validActions g'
+          let hasAll acts' valids' = all ((flip elem) valids') acts'
+          vA `shouldSatisfy` hasAll acceptances
+          vA `shouldSatisfy` hasAll rejections
+        it "should allow the original player to cancel" $ do
+          let vA = view validActions g'
+          let cancel' = cancel tradeOffer'
+          vA `shouldSatisfy` elem cancel'
+
+        let acceptance = head acceptances
+        let (accepted, _) = runGame (update acceptance) g' randRolled
+
+        let acceptance' = acceptance^?!action.trade
+        let complete' = fromJust $ complete (Offer tradeOffer') acceptance'
+
+        it "should let another player accept" $ do
+          view openTrades accepted `shouldBe` [Offer tradeOffer', acceptance']
+          let vA = view validActions g'
+          vA `shouldSatisfy` elem complete'
+
+        let (completed, _) = runGame (update complete') accepted randRolled
+
+        it "should let the first player complete the trade" $ do
+          view openTrades completed `shouldBe` []
       it "should allow for building, according to resources" $ do
         let enoughForSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
         let unbuiltLeft p = any (== (unbuilt settlement)) (p^.constructed)
@@ -180,7 +236,19 @@ spec = do
           pending
       context "Monopolizing" $ do
         it "should allow the current player to obtain all resources of a certain type" $ do
-          pending
+          let playerIndex' = (toPlayerIndex 0)
+          let playCard' = mkPlayCard playerIndex' Monopoly
+          let (g', _) = runGame (update playCard') withMonopoly randRolled
+          let monopolies = map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
+          view validActions g' `shouldBe` monopolies
+
+          let lumberMonopoly = PlayerAction playerIndex' (SpecialAction (M (MonopolyOn Lumber)))
+          let (postMonopoly, _) = runGame (update lumberMonopoly) g' randRolled
+
+          let pRes = map (view resources) $ view players postMonopoly
+          let totalLumber = sum $ map (lumber) pRes
+          pRes `shouldSatisfy` (all (\r -> lumber r == 0 || lumber r == totalLumber))
+          
 
     context "in End phase" $ do
       it "has no more validActions" $ do

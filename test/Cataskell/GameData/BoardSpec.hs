@@ -60,18 +60,18 @@ spec = do
   describe "A HexCenter" $ do
     it "has a terrain type and accompanying resource" $ do
       let hex = mkHexCenter Mountain 2
-      resource hex `shouldBe` mempty { ore = 1 }
+      _resource hex `shouldBe` mempty { ore = 1 }
     it "cannot be made with Desert && roll != 7, or !Desert && roll == 7" $ do
-      terrain (mkHexCenter Desert 7) `shouldBe` Desert
+      _terrain (mkHexCenter Desert 7) `shouldBe` Desert
       (evaluate . force) (mkHexCenter Desert 5) `shouldThrow` (const True :: Selector AssertionFailed)
       (evaluate . force) (mkHexCenter Mountain 7) `shouldThrow` (const True :: Selector AssertionFailed)
     it "can be generated satisfying this requirement" $ property $
-      \hc -> (terrain (hc :: HexCenter) == Desert) == (roll hc == 7)
+      \hc -> (_terrain (hc :: HexCenter) == Desert) == (_roll hc == 7)
   describe "A HexMap" $ do
     it "should create a randomly generated set of terrains and rolls" $ property $
       \hexMap -> (Map.size (hexMap :: HexMap)) == 19
     it "should have one 2, one 7, one 12, and two of everything else" $ property $
-      \hexMap -> let rolls = group . sort . map roll $ Map.elems (hexMap :: HexMap)
+      \hexMap -> let rolls = group . sort . map _roll $ Map.elems (hexMap :: HexMap)
                      rollCounts = Map.fromList $ zip (map head rolls) (map length rolls)
                      a = ((Map.!) rollCounts 2) == 1
                      b = ((Map.!) rollCounts 7) == 1
@@ -80,7 +80,7 @@ spec = do
                      e = (all (== 2) $ map ((Map.!) rollCounts) [8..11])
                  in  a && b && c && d && e
     it "should have 3 hills, 4 pastures, 3 mountains, 4 fields, 4 forests, and 1 desert" $ property $
-      \hexMap -> let terrains = group . sort . map terrain $ Map.elems (hexMap :: HexMap)
+      \hexMap -> let terrains = group . sort . map _terrain $ Map.elems (hexMap :: HexMap)
                      terrainCounts = Map.fromList $ zip (map head terrains) (map length terrains)
                      h = ((Map.!) terrainCounts Hill) == 3
                      p = ((Map.!) terrainCounts Pasture) == 4
@@ -95,8 +95,8 @@ spec = do
 
     describe "the Desert" $ do
       it "should have roll equal to 7" $ property $
-        \hexMap -> let desertHex = head . filter ((== Desert) . terrain) $ Map.elems (hexMap :: HexMap)
-                   in roll desertHex == 7
+        \hexMap -> let desertHex = head . filter ((== Desert) . _terrain) $ Map.elems (hexMap :: HexMap)
+                   in _roll desertHex == 7
   describe "A BuildingMap" $ do
     it "should have 54 keys" $ do
       Map.size emptyBuildingMap `shouldBe` 54

@@ -62,7 +62,7 @@ spec = do
       it "can be checked against the resources of the player" $ do
         p2 `shouldSatisfy` (\p -> enoughFor (p2accept ^? action.trade.offer.asking) p == (Just True))
 
-    let p3reject = reject offer' (p3^.playerIndex) (Just "nope")
+    let p3reject = reject offer' (Just "nope") (p3^.playerIndex)
     describe "A Reject" $ do
       it "should contain the rejecter, original offer and asker" $ do
         view actor p3reject `shouldBe` p3^.playerIndex

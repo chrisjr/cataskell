@@ -18,11 +18,13 @@ import Control.Monad.Random
 import System.Random.Shuffle
 
 data HexCenter = HexCenter
- { terrain :: Terrain
- , resource :: ResourceCount
- , roll :: Int
- , hasRobber :: Bool
+ { _terrain :: Terrain
+ , _resource :: ResourceCount
+ , _roll :: Int
+ , _hasRobber :: Bool
  } deriving (Eq, Ord, Show, Read,Generic)
+
+makeLenses ''HexCenter
 
 type HexMap = Map.Map CentralPoint HexCenter
 type RoadMap = Map.Map UndirectedEdge (Maybe OnEdge)
@@ -30,10 +32,10 @@ type BuildingMap = Map.Map Point (Maybe OnPoint)
 type HarborMap = Map.Map Point Harbor
 
 mkHexCenterUnsafe :: Terrain -> Int -> HexCenter
-mkHexCenterUnsafe t r = HexCenter { terrain = t
-                                  , roll = r
-                                  , resource = resourceFromTerrain t
-                                  , hasRobber = t == Desert }
+mkHexCenterUnsafe t r = HexCenter { _terrain = t
+                                  , _roll = r
+                                  , _resource = resourceFromTerrain t
+                                  , _hasRobber = t == Desert }
 
 -- | Make a hex with appropriate roll and terrain
 mkHexCenter :: Terrain -> Int -> HexCenter
@@ -70,7 +72,7 @@ problemNeighborhoods m
   = let highValued x = x == 6 || x == 8
         pointAndNeighborValued (p, ns) = highValued ((Map.!) rollsMap p) && any highValued ns
         lowValued (p, ns) = not ((highValued ((Map.!) rollsMap p)) || any highValued ns)
-        rollsMap = Map.map roll m
+        rollsMap = Map.map _roll m
         hn' = Map.map (catMaybes . map ((flip Map.lookup) rollsMap)) hexNeighborhoods
         lst = Map.toList hn'
     in  (map fst (filter pointAndNeighborValued lst), map fst (filter lowValued lst))
@@ -215,6 +217,9 @@ build bldg brd
         let roads' = Map.adjust (\x -> if isNothing x then (Just bl) else x) e (brd ^. roads)
         in roads .~ roads' $ brd
 
+centersToNeighbors :: Map.Map CentralPoint [Point]
+centersToNeighbors = Map.fromList $ zip hexCenterPoints (map pointsAroundHex hexCenterPoints)
+
 getPointsToHexCentersMap :: Board -> Map.Map Point [HexCenter]
 getPointsToHexCentersMap b = ptsToHexes
   where ptsToHexes = Map.unionsWith (++) $ concatMap mkPtToHCs hexes'
@@ -230,16 +235,16 @@ allResourcesFromRoll r b = colorSums
                                 in (color b', r'')) bldgsRes
         bldgsRes = Map.elems $ Map.intersectionWith addUpRes bldgs ptsToHex
         addUpRes bld nhs = (bld, foldl (<>) mempty $ map getResForHex nhs)
-        getResForHex hC = let res = resource hC
-                          in  if hasRobber hC then mempty else res
+        getResForHex hC = let res = _resource hC
+                          in  if _hasRobber hC then mempty else res
         ptsToHex = Map.filter ((> 0) . length) rollRelevant
-        rollRelevant = Map.map (filter ((== r) . roll)) $ getPointsToHexCentersMap b
+        rollRelevant = Map.map (filter ((== r) . _roll)) $ getPointsToHexCentersMap b
         bldgs = getHabitations b
 
 allStartingResources :: OnPoint -> Board -> ResourceCount
 allStartingResources op' b = maybe mempty snd pointRes
   where pointRes = listToMaybe $ Map.toList bldgRes
-        bldgRes = Map.intersectionWith (\_ hexes' -> foldl (<>) mempty $ map resource hexes') bldg ptsToHex
+        bldgRes = Map.intersectionWith (\_ hexes' -> foldl (<>) mempty $ map _resource hexes') bldg ptsToHex
         ptsToHex = getPointsToHexCentersMap b
         bldg = Map.singleton (op'^.point) op'
 
