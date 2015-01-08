@@ -279,8 +279,6 @@ addAndUpdateTrades tradeAction' = do
   openTrades <>= [tradeAction']
   newTrades <- possibleTradeActions
   validActions' <- use validActions
-  -- let hasComplete = any ((== Just True) . fmap isComplete . preview (action.trade)) newTrades
-  -- assert (not (isAccept tradeAction') || hasComplete) 
   validActions .= nub (validActions' ++ newTrades)
 
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
