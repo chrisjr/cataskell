@@ -318,7 +318,6 @@ doPlayCard playerIndex' card'
       Monopoly -> toSpecialPhase Monopolizing playerIndex'
       VictoryPoint -> return ()
 
-
 myFoldM :: Monad m => a -> [b] -> (a -> b -> m a) -> m a
 myFoldM a1 lst f = foldM f a1 lst
 
@@ -385,7 +384,6 @@ possibleTradeActions playerIndex' = do
   openTrades' <- use openTrades
   let base = [mkOffer playerIndex' mempty mempty]
   let offer' = listToMaybe $ mapMaybe toOffer openTrades'
-
   if isJust offer'
   then do
     let offer'' = fromJust offer'

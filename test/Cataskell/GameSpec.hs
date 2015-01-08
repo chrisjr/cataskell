@@ -91,8 +91,25 @@ spec = do
                in  (fst highestCount < 10) || (snd highestCount == 1)
 
   describe "GameStateReturning functions" $ do
+    let game = head randomGames
+    context "possibleTradeActions" $ do
+      let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
+      let accept' = accept offer' (toPlayerIndex 1)
+      let complete' = fromJust $ complete $ accept'^?!action.trade
+      let setAll = [ set (players . ix 0 . resources) mempty { ore = 1 }
+                   , set (players . ix 1 . resources) mempty { wheat = 1 }
+                   , set (players . ix 2 . resources) mempty
+                   , set openTrades [Offer offer']
+                   ]
+      let offerGame = (foldr (.) id setAll) game
+      let offerAndAcceptGame = set openTrades [Offer offer', accept'^?!action.trade] offerGame
+      let actionsFromGame g = evalGame (use currentPlayer >>= possibleTradeActions) g (mkStdGen 0)
+
+      it "should generate an accept when offer is present" $ do
+        actionsFromGame offerGame `shouldSatisfy` elem accept'
+      it "should generate a complete when offer and acceptance are present" $ do
+        actionsFromGame offerAndAcceptGame `shouldSatisfy` elem complete'
     context "makeDiscards" $ do
-      let game = head randomGames
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
                      , set (players . ix 1 . resources) mempty { lumber = 9 }
