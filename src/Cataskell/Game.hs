@@ -150,34 +150,41 @@ scores = do
   ps <- use players
   return $ map (view score) ps
 
+turnIs :: PlayerIndex -> Game -> Bool
+turnIs playerIndex' = (== playerIndex') . view currentPlayer
+
 -- | Returns a series of predicates that must be true for an action to proceed.
 preconditions :: GameAction -> [Game -> Bool]
 preconditions (PlayerAction playerIndex' action')
   = case action' of
       Roll -> [ phaseOneOf [Normal]
+              , turnIs playerIndex'
               , \g -> view currentPlayer g == playerIndex']
-      BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)]]
+      BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)], turnIs playerIndex']
       SpecialAction x -> case x of
-        M _ -> [phaseOneOf [Special Monopolizing]]
-        I _ -> [phaseOneOf [Special Inventing]]
-        R _ -> [phaseOneOf [Special MovingRobber]]
+        M _ -> [phaseOneOf [Special Monopolizing], turnIs playerIndex']
+        I _ -> [phaseOneOf [Special Inventing], turnIs playerIndex']
+        R _ -> [phaseOneOf [Special MovingRobber], turnIs playerIndex']
       PlayCard x -> [ phaseOneOf [Normal]
                     , hasItem (Card x) playerIndex'
+                    , turnIs playerIndex'
                     , \_ -> x /= VictoryPoint] -- can't play a victory point
       Purchase x -> [ phaseOneOf [Normal]
+                    , turnIs playerIndex'
                     , hasResourcesForItem x playerIndex']
       Trade x -> case x of
-        Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
+        Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
         Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) playerIndex']
         Reject {} -> [phaseOneOf [Normal]]
         CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
                                                , hasResourcesFor (offer'^.offering) playerIndex'
-                                               , hasResourcesFor (offer'^.asking) accepterIndex']
-        CancelTrade _ -> [phaseOneOf [Normal]]
-        Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
+                                               , hasResourcesFor (offer'^.asking) accepterIndex'
+                                               , turnIs playerIndex']
+        CancelTrade _ -> [phaseOneOf [Normal], turnIs playerIndex']
+        Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
       Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
                                      , \_ -> totalResources r == i ]
-      EndTurn -> [phaseOneOf [Normal]]
+      EndTurn -> [phaseOneOf [Normal], turnIs playerIndex']
 
 doAction :: (RandomGen g) => GameAction -> GameState g
 doAction act'
