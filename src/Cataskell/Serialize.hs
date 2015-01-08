@@ -22,16 +22,16 @@ import Data.Aeson.TH
 
 deriveJSON myOptions ''VertexPosition
 
-deriveJSON myOptions ''Point
+deriveJSON myOptionsNoLens ''Point
 
-deriveJSON myOptions ''CentralPoint
+deriveJSON myOptionsNoLens ''CentralPoint
 
-deriveJSON myOptions ''UndirectedEdge
+deriveJSON myOptionsNoLens ''UndirectedEdge
 
 -- basics
 deriveJSON myOptions ''ResourceType
 
-deriveJSON myOptions { fieldLabelModifier = id } ''ResourceCount
+deriveJSON myOptionsNoLens ''ResourceCount
 
 deriveJSON myOptions ''Terrain
 

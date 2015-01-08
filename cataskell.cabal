@@ -54,6 +54,7 @@ executable cataskell-cli
   -- other-extensions:    
   build-depends:     base
                    , cataskell
+                   , bytestring
                    , fgl
                    , aeson
                    , containers
