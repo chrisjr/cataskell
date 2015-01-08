@@ -57,7 +57,7 @@ instance Arbitrary Game where
                     <*> shrink' (_rolled f)
                     <*> shrink' (_validActions f)
                     <*> shrink' (_openTrades f)
-                    <*> [_lastAction f]
+                    <*> shrink' (_lastAction f)
                     <*> shrink' (_allCards f)
                     <*> shrink' (_winner f)
     where shrink' a = a : shrink a
@@ -120,17 +120,16 @@ spec = do
       it "should generate a complete when offer and acceptance are present" $ do
         actionsFromGame offerAndAcceptGame `shouldSatisfy` elem complete'
 
-      let checkFor cImplies x game' = let g = (game' :: Game)
-                                          openTrades' = getFromGame (use openTrades) g
-                                          acts' = actionsFromGame g
-                                          hasAccepts = any ((== Just True) . fmap x . preview (action.trade)) acts'
-                                      in  any cImplies openTrades' <= hasAccepts
+      let tradesFrom game' = getFromGame (use openTrades) (game' :: Game)
+      let checkIfAny cImplies = any cImplies . tradesFrom
+      let checkFor x game' = let acts' = actionsFromGame (game' :: Game)
+                             in  any ((== Just True) . fmap x . preview (action.trade)) acts'
       it "should always generate an accept when offers are present" $ property $
-        checkFor (isJust . toOffer) isAccept
+        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isAccept g
       it "should always generate a reject when offers are present" $ property $
-        checkFor (isJust . toOffer) isReject
+        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isReject g
       it "should always generate a complete when accepts are present" $ property $
-        checkFor isAccept isComplete
+        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isComplete g
     context "makeDiscards" $ do
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
