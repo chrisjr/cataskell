@@ -510,9 +510,7 @@ toSpecialPhase special' playerIndex' = do
         possibleRoads <- uses board (validRoadsFor $ color player')
         validActions .= map (mkFree playerIndex') possibleRoads
       RobberAttack -> do -- ^ If no one has more than 7 resources, move on to MovingRobber.
-        ps <- use players
-        let pRes = map (\p -> (p^.playerIndex, totalResources (p ^. resources))) ps
-        let mustDiscard = map mkDiscard $ filter (\(_, r) -> r > 7) pRes
+        mustDiscard <- makeDiscards
         if not $ null mustDiscard
         then validActions .= mustDiscard
         else toSpecialPhase MovingRobber playerIndex'
@@ -523,6 +521,17 @@ toSpecialPhase special' playerIndex' = do
         else validActions .= robberMoves
       Inventing -> validActions .= map (invent playerIndex') possibleInventions
       Monopolizing -> validActions .= map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
+
+makeDiscards :: (RandomGen g) => GameStateReturning g [GameAction]
+makeDiscards = do
+  ps <- use players
+  let pRes = map (\p -> (p^.playerIndex, p ^. resources)) ps
+  let pMustDiscard = filter (\(_, r) -> totalResources r > 7) pRes
+  let listDiscards (p,r) = let total' = totalResources r `div` 2
+                               rs = resCombinationsForTotal total'
+                           in  zip (repeat p) $ filter (sufficient r) rs
+  let pDiscards = concatMap listDiscards pMustDiscard
+  return $ map mkDiscard pDiscards
 
 -- | Game won by player p.
 wonBy :: (RandomGen g) => PlayerIndex -> GameState g

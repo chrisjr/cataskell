@@ -101,13 +101,13 @@ toOffer trade' = case trade' of
   Offer x -> Just x
   _ -> Nothing
 
--- | Create an empty Discard action
-mkDiscard :: (PlayerIndex, Int) -> GameAction
-mkDiscard (pI, currentTotal)
+-- | Create a Discard action
+mkDiscard :: (PlayerIndex, ResourceCount) -> GameAction
+mkDiscard (pI, res)
   = PlayerAction { _actor = pI
                  , _action = Discard DiscardAction
-                    { _amountToDiscard = currentTotal `div` 2
-                    , _resourcesDiscarding = mempty 
+                    { _amountToDiscard = totalResources res
+                    , _resourcesDiscarding = res
                     } 
                  }
 
@@ -200,11 +200,13 @@ invent playerIndex' res'
     in PlayerAction { _actor = playerIndex'
                     , _action = act' }
 
+resCombinationsForTotal :: Int -> [ResourceCount]
+resCombinationsForTotal i = map (\(a,b,c,d,e) -> ResourceCount a b c d e) tuples
+  where tuples = [ (a,b,c,d,e) | a <- is, b <- is, c <- is, d <- is, e <- is, sum [a,b,c,d,e] == i]
+        is = [0..i]
+
 possibleInventions :: [ResourceCount]
-possibleInventions = resCounts
-  where resCounts = map (\(a,b,c,d,e) -> ResourceCount a b c d e) tuples
-        tuples = [ (a,b,c,d,e) | a <- is, b <- is, c <- is, d <- is, e <- is, sum [a,b,c,d,e] == 2]
-        is = [0..2]
+possibleInventions = resCombinationsForTotal 2
 
 possibleMonopolies :: [SpecialAction]
 possibleMonopolies = map (M . MonopolyOn) resTypes

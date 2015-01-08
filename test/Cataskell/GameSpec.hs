@@ -90,10 +90,21 @@ spec = do
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores
                in  (fst highestCount < 10) || (snd highestCount == 1)
 
+  describe "GameStateReturning functions" $ do
+    context "makeDiscards" $ do
+      let game = head randomGames
+      it "should generate discards for players with >7 resources" $ do
+        let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
+                     , set (players . ix 1 . resources) mempty { lumber = 9 }
+                     , set (players . ix 2 . resources) mempty { brick = 3 }
+                     ]
+        let game' = (foldr (.) id setAll) game
+        let discards = evalGame makeDiscards game' (mkStdGen 0)
+        discards `shouldBe` [ mkDiscard (toPlayerIndex 0, mempty { ore = 4 })
+                            , mkDiscard (toPlayerIndex 1, mempty { lumber = 4 })]
+
   describe "An example game" $ do
-
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
-
     let gs = iterate (\(x, r) -> runGame randomAct x r) (initialGame, r')
     let (normalGame, _) = gs !! 16
 
