@@ -42,6 +42,7 @@ library
                      Cataskell.GameData.Player
                      Cataskell.GameData.Resources
                      Cataskell.Serialize
+                     Cataskell.SerializeOpts
                      Cataskell.Util
   if flag(coverage)
     ghc-options: -fhpc

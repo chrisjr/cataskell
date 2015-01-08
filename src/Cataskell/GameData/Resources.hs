@@ -4,7 +4,6 @@ module Cataskell.GameData.Resources where
 
 import Cataskell.GameData.Basics
 import Data.Monoid
-import Data.Aeson
 import GHC.Generics (Generic)
 
 data ResourceCount = ResourceCount 
@@ -14,9 +13,6 @@ data ResourceCount = ResourceCount
   , brick :: Int
   , ore :: Int
   } deriving (Eq, Ord, Show, Read,Generic)
-
-instance FromJSON ResourceCount
-instance ToJSON ResourceCount
 
 instance Monoid ResourceCount where
   mempty = ResourceCount 0 0 0 0 0

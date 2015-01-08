@@ -64,10 +64,10 @@ data VertexPosition
 data Point = Point
   { coord :: HexCoord
   , position :: VertexPosition
-  } deriving (Eq, Ord, Show, Read,Generic)
+  } deriving (Eq, Ord, Show, Read, Generic)
 
 newtype CentralPoint = Central Point
- deriving ( Eq, Ord, Show, Read )
+ deriving (Eq, Ord, Show, Read, Generic)
 
 toCenter :: Point -> CentralPoint
 toCenter x | position x == Center = Central x

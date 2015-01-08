@@ -22,7 +22,7 @@ data HexCenter = HexCenter
  , _resource :: ResourceCount
  , _roll :: Int
  , _hasRobber :: Bool
- } deriving (Eq, Ord, Show, Read,Generic)
+ } deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''HexCenter
 
@@ -52,7 +52,7 @@ data Board = Board
   , _roads :: RoadMap
   , _buildings :: BuildingMap
   , _harbors :: HarborMap
-  } deriving (Eq, Ord, Show, Read,Generic)
+  } deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''Board
 
