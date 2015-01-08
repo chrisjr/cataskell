@@ -57,7 +57,7 @@ newGame pNames = do
   shuffledNames <- shuffleM pNames
   cards <- shuffleM allDevelopmentCards
   let ps = mkPlayers shuffledNames
-  return Game { _phase = Initial 
+  return Game { _phase = Initial
               , _board = b
               , _players = ps
               , _currentPlayer = toPlayerIndex 0
@@ -371,11 +371,14 @@ possiblePurchases playerIndex' = do
   let roads' = validRoadsFor (color player') b
   let settlements' = validSettlementsFor (color player') b
   let cities' = validCitiesFor (color player') b
-  let cards' = if sufficient (player'^.resources) (cost $ Potential DevelopmentCard)
+  let buildings' = concat [roads', settlements', cities']
+  let res = player'^.resources
+  let possibleBuildings = filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
+  let cards' = if sufficient res (cost $ Potential DevelopmentCard)
                then [purchase playerIndex' (Potential DevelopmentCard)]
                else []
-  let mkPurchases = map (purchase playerIndex' . Building)
-  return $ cards' ++ concatMap mkPurchases [roads', settlements', cities']
+  let mkPurchase = purchase playerIndex' . Building
+  return $ cards' ++ map mkPurchase possibleBuildings
 
 possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleTradeActions playerIndex' = do

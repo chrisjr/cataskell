@@ -88,7 +88,7 @@ spec = do
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores = map (view score) $ game ^. players
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores
-               in  (fst highestCount >= 10) == (snd highestCount == 1)
+               in  (fst highestCount < 10) || (snd highestCount == 1)
 
   describe "An example game" $ do
 
