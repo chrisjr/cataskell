@@ -5,6 +5,7 @@ module Cataskell.Game where
 import Control.Monad.Identity
 import Control.Monad.Random
 import Control.Monad.State
+import Control.Monad ((>=>))
 import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
@@ -143,6 +144,11 @@ scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g Int
 scoreFor pI = do
   player' <- getPlayer pI
   return $ view score player'
+
+scores :: (RandomGen g) => GameStateReturning g [Int]
+scores = do
+  ps <- use players
+  return $ map (view score) ps
 
 -- | Returns a series of predicates that must be true for an action to proceed.
 preconditions :: GameAction -> [Game -> Bool]
@@ -422,20 +428,21 @@ canMoveRobberTo playerIndex' = do
   robberSpots <- robbableSpotsFor playerIndex'
   return $ map (mkMoveRobber playerIndex') robberSpots
 
+neighborBuildings :: (RandomGen g) => CentralPoint -> GameStateReturning g [OnPoint]
+neighborBuildings cp = do
+  b <- use board
+  let buildings' = getHabitations b
+  let myNeighbors = (Map.!) centersToNeighbors cp
+  return $ mapMaybe (`Map.lookup` buildings') myNeighbors
+
 robbableSpotsFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g [CentralPoint]
 robbableSpotsFor playerIndex' = do
-  b <- use board
   ps <- use players
-  let buildings' = getHabitations b
   self <- getPlayer playerIndex'
   let ownColor = color self
   let playersColors = zip ps (map color ps)
-  let protected = nub $ ownColor:(map snd $ filter (\(p,_) -> view displayScore p > 2) playersColors)
-  let isValidPoint cp = let myNeighbors = (Map.!) centersToNeighbors cp
-                            neighborBuildings = mapMaybe (`Map.lookup` buildings') myNeighbors
-                            colors' = map color neighborBuildings
-                        in  all (not . flip elem protected) colors'
-  return $ filter isValidPoint hexCenterPoints
+  let protected = nub $ ownColor:(map snd $ filter (\(p,_) -> view displayScore p < 2) playersColors)
+  filterM (neighborBuildings >=> return . all (not . flip elem protected) . map color) hexCenterPoints
 
 -- | Called on EndTurn action or in initial phase
 progress :: (RandomGen g) => GameState g
@@ -545,3 +552,9 @@ randomAct = do
   vA <- use validActions
   act' <- uniform vA
   update act'
+
+-- | Force a particular roll and update (useful for testing purposes).
+forceRoll :: (RandomGen g) => Int -> GameState g
+forceRoll i = do
+  rolled .= Just i
+  updateForRoll

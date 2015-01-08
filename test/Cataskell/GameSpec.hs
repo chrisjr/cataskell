@@ -11,7 +11,8 @@ import Control.Monad.Random
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
-import Data.Maybe (fromJust, isJust)
+import qualified Data.Map.Strict as Map
+import Data.Maybe (fromJust, isJust, mapMaybe)
 import Data.Monoid (mempty)
 import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
@@ -32,7 +33,7 @@ fromInitialGame :: InitialGame -> Game
 fromInitialGame (InitialGame x) = x
 
 mkSteps :: (RandomGen g) => Rand g Int
-mkSteps = getRandomR (0, 100)
+mkSteps = getRandomR (0, 500)
 
 mkGame :: (RandomGen g) => Rand g Game
 mkGame = do
@@ -96,8 +97,8 @@ spec = do
                           isValid' x = evalRand (evalStateT (isValid x) game) (stdGen :: StdGen)
                       in all isValid' vA
     it "has at most one player with >= 10 victory points" $ property $
-      \game -> let scores = map (view score) $ game ^. players
-                   highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores
+      \game -> let scores' = evalGame scores game (mkStdGen 0)
+                   highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores'
                in  (fst highestCount < 10) || (snd highestCount == 1)
 
   describe "GameStateReturning functions" $ do
@@ -312,16 +313,49 @@ spec = do
 
     context "in the Special phase" $ do
       context "RobberAttack" $ do
+        let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
+                     , set (players . ix 1 . resources) mempty { wheat = 10 }
+                     , set (players . ix 2 . resources) mempty { brick = 7 }
+                     , set rolled $ Just 7
+                     ]
+        let toRobGame = (foldr (.) id setAll) rolledOnce
+        let (robbedGame, _) = runGame updateForRoll toRobGame randRolled
+        let disc1 = mkDiscard (toPlayerIndex 0, mempty { ore = 4 })
+        let disc2 = mkDiscard (toPlayerIndex 1, mempty { wheat = 5 })
         it "should force any players with over 7 resources to discard half" $ do
-          pending
+          view phase robbedGame `shouldBe` Special RobberAttack
+          let vA = view validActions robbedGame
+          sort vA `shouldBe` sort [disc1, disc2]
         it "should transition into MovingRobber phase after discards" $ do
-          pending
+          let (postDiscard0, _) = runGame (update disc1) robbedGame randRolled
+          let (postDiscard, _) = runGame (update disc2) postDiscard0 randRolled
+          view phase postDiscard `shouldBe` Special MovingRobber
       context "MovingRobber" $ do
         describe "the player must move the robber" $ do
-          specify "to a hex neighbored solely by players with >2 visible victory points" $ do
-            pending
-          specify "to an unoccupied hex, otherwise" $ do
-            pending
+          specify "to a hex ringed by players with >2 visible victory points" $ property $
+            \g -> let scores' = evalGame scores (g :: Game) randRolled 
+                  in (view phase g == Normal) && any (>2) scores' ==>
+                    let (g', _) = runGame (forceRoll 7) g randRolled 
+                        psScores = zip (map toPlayerIndex [0..3]) scores'
+                        pColors = Map.fromList $ map (\p -> (p^.playerIndex, color p)) $ view players g'
+                        high = map fst $ filter ((>2) . snd) psScores
+                        acceptableColors = mapMaybe (`Map.lookup` pColors) high
+                        vA = view validActions g'
+                        checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
+                        isValidRobberMove a = case a^.action of
+                                                SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                _ -> False
+                    in  all isValidRobberMove vA
+          specify "to an unoccupied hex, otherwise" $ property $ do
+            \g -> let scores' = evalGame scores (g :: Game) randRolled 
+                   in (view phase g == Normal) && not (any (>2) scores') ==>
+                     let (g', _) = runGame (forceRoll 7) g randRolled 
+                         vA = view validActions g'
+                         checkDest dest = null $ evalGame (neighborBuildings dest) g' randRolled
+                         isValidRobberMove a = case a^.action of
+                                                 SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                 _ -> False
+                     in  all isValidRobberMove vA
       context "FreeRoads" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
         let (g', _) = runGame (update playCard') withRoadBuilding randRolled
@@ -341,7 +375,22 @@ spec = do
           view phase built2 `shouldBe` Normal
       context "Inventing" $ do
         it "should allow the current player to obtain two resources of their choice" $ do
-          pending
+          let playerIndex' = (toPlayerIndex 0)
+          let resPre = view (players . ix 0 . resources) withInvention
+          let lumberPre = lumber resPre
+          let wheatPre = wheat resPre
+          let playCard' = mkPlayCard playerIndex' Invention
+          let (g', _) = runGame (update playCard') withInvention randRolled
+          let inventions = map (invent playerIndex') possibleInventions
+          view validActions g' `shouldBe` inventions
+          let lumberWheatInvention = PlayerAction playerIndex' (SpecialAction (I (InventionOf mempty { lumber = 1, wheat = 1})))
+          let (postLumberWheatInvention, _) = runGame (update lumberWheatInvention) g' randRolled
+
+          let resPost = view (players . ix 0 . resources) postLumberWheatInvention
+          let lumberPost = lumber resPost
+          let wheatPost = wheat resPost
+          lumberPost `shouldSatisfy` (== lumberPre + 1)
+          wheatPost `shouldSatisfy` (== wheatPre + 1)
       context "Monopolizing" $ do
         it "should allow the current player to obtain all resources of a certain type" $ do
           let playerIndex' = (toPlayerIndex 0)
@@ -357,5 +406,6 @@ spec = do
           let totalLumber = sum $ map (lumber) pRes
           pRes `shouldSatisfy` (all (\r -> lumber r == 0 || lumber r == totalLumber))
     context "in End phase" $ do
-      it "has no more validActions" $ do
-        pending
+      it "has no more validActions" $ property $
+        \g -> view phase (g :: Game) == End ==>
+          null $ view validActions g
