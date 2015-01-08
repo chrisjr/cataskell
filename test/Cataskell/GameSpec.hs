@@ -128,8 +128,13 @@ spec = do
         \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isAccept g
       it "should always generate a reject when offers are present" $ property $
         \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isReject g
+      it "should never have an accept and reject by the same player" $ property $
+        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> let trades' = tradesFrom g
+                                                                rejecters = map (^?!rejecter) $ filter isReject trades'
+                                                                accepters = map (^?!accepter) $ filter isAccept trades'
+                                                            in  null (accepters `intersect` rejecters)
       it "should always generate a complete when accepts are present" $ property $
-        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isComplete g
+        \g -> checkIfAny isAccept (g :: Game) ==> checkFor isComplete g
     context "makeDiscards" $ do
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
