@@ -414,7 +414,7 @@ mkAccept offer' = do
 possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleDevelopmentCards playerIndex' = do
   items' <- inventory playerIndex'
-  let cards' = mapMaybe (^? card) items'
+  let cards' = filter (/= VictoryPoint) $ mapMaybe (^? card) items'
   return $ map (mkPlayCard playerIndex') cards'
 
 canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
