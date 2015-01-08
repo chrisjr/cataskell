@@ -49,19 +49,18 @@ randomGames = evalRand mkGames (mkStdGen 0)
 
 instance Arbitrary Game where
   arbitrary = elements randomGames
-  shrink f = tail $ Game <$> [(_phase f)]
+  shrink f = tail $ Game <$> [_phase f]
                     <*> shrink' (_board f)
                     <*> shrink' (_players f)
                     <*> shrink' (_currentPlayer f)
                     <*> shrink' (_turnAdvanceBy f)
                     <*> shrink' (_rolled f)
-                    <*> shrink'' (_validActions f)
-                    <*> shrink'' (_openTrades f)
-                    <*> [(_lastAction f)]
+                    <*> shrink' (_validActions f)
+                    <*> shrink' (_openTrades f)
+                    <*> [_lastAction f]
                     <*> shrink' (_allCards f)
                     <*> shrink' (_winner f)
     where shrink' a = a : shrink a
-          shrink'' a = subsequences a
 
 instance Arbitrary InitialGame where
   arbitrary = do

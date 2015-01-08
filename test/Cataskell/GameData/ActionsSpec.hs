@@ -9,9 +9,11 @@ import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 
 import Data.Monoid (mempty)
+import Control.Applicative ((<$>), (<*>))
 import Data.Maybe
-import Control.Lens
+import Control.Lens hiding (elements)
 
+import Cataskell.GameData.BasicsSpec()
 import Cataskell.GameData.PlayerSpec()
 import Cataskell.GameData.ResourcesSpec()
 
@@ -20,6 +22,46 @@ instance Arbitrary DiscardAction where
     r <- arbitrary
     let t = totalResources r
     return $ DiscardAction { _resourcesDiscarding = r, _amountToDiscard = t}
+
+instance Arbitrary Monopoly where
+  arbitrary = elements $ map (^?! monopoly) possibleMonopolies
+
+instance Arbitrary Invention where
+  arbitrary = elements $ map (InventionOf) possibleInventions
+
+instance Arbitrary SpecialAction where
+  arbitrary = do
+    let m = M <$> arbitrary
+    let i = I <$> arbitrary
+    let r = R <$> MoveRobber <$> arbitrary
+    oneof [m, i, r]
+
+instance Arbitrary TradeOffer where
+  arbitrary = TradeOffer <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary TradeAction where
+  arbitrary = do
+    let o = Offer <$> arbitrary
+    let a = Accept <$> arbitrary <*> arbitrary
+    let r = Reject <$> arbitrary <*> arbitrary <*> arbitrary
+    let c = CompleteTrade <$> arbitrary <*> arbitrary
+    let c' = CancelTrade <$> arbitrary
+    let e = Exchange <$> arbitrary
+    oneof [o, a, r, c, c', e]
+
+instance Arbitrary PlayerAction where
+  arbitrary = do
+    let noargs = elements [Roll, EndTurn]
+    let buildForFree = BuildForFree <$> arbitrary
+    let special = SpecialAction <$> arbitrary
+    let playCard = PlayCard <$> arbitrary
+    let purchase' = Purchase <$> arbitrary
+    let trade = Trade <$> arbitrary
+    let discard' = Cataskell.GameData.Actions.Discard <$> arbitrary
+    oneof [noargs, buildForFree, special, playCard, purchase', trade, discard']
+
+instance Arbitrary GameAction where
+  arbitrary = PlayerAction <$> arbitrary <*> arbitrary
 
 main :: IO ()
 main = hspec spec

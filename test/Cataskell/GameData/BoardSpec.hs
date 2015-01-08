@@ -17,9 +17,11 @@ import Data.Monoid (mempty)
 import Data.Maybe
 import Control.Lens hiding (elements)
 import Control.Monad.Random
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>))
+import Control.Arrow ((&&&))
 
 import Cataskell.GameData.LocationSpec()
+import Cataskell.GameData.BasicsSpec ()
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
 instance NFData Terrain
@@ -37,6 +39,23 @@ instance Arbitrary HexMap where
     return $ evalRand newHexMap stdGen
   shrink m = Map.fromList <$> shrink (Map.toList m)
 
+instance Arbitrary OnEdge where
+  arbitrary = OnEdge <$> arbitrary <*> arbitrary
+
+instance Arbitrary OnPoint where
+  arbitrary = OnPoint <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary RoadMap where
+  arbitrary = do
+    let e = emptyRoadMap
+    return e
+  shrink m = Map.fromList <$> shrink (Map.toList m)
+
+instance Arbitrary BuildingMap where
+  arbitrary = do
+    let e = emptyBuildingMap
+    return e
+  shrink m = Map.fromList <$> shrink (Map.toList m)
 
 instance Arbitrary Harbor where
   arbitrary = elements harborTypes
@@ -51,6 +70,11 @@ instance Arbitrary Board where
   arbitrary = do
     stdGen <- (arbitrary :: Gen StdGen)
     return $ evalRand newBoard stdGen
+  shrink b = tail $ Board <$> shrink' (_hexes b) 
+                          <*> shrink' (_roads b)
+                          <*> shrink' (_buildings b)
+                          <*> shrink' (_harbors b)
+    where shrink' a = a : shrink a
 
 main :: IO ()
 main = hspec spec
@@ -71,8 +95,8 @@ spec = do
     it "should create a randomly generated set of terrains and rolls" $ property $
       \hexMap -> (Map.size (hexMap :: HexMap)) == 19
     it "should have one 2, one 7, one 12, and two of everything else" $ property $
-      \hexMap -> let rolls = group . sort . map _roll $ Map.elems (hexMap :: HexMap)
-                     rollCounts = Map.fromList $ zip (map head rolls) (map length rolls)
+      \hexMap -> let rolls' = group . sort . map _roll $ Map.elems (hexMap :: HexMap)
+                     rollCounts = Map.fromList $ map (head &&& length) rolls'
                      a = ((Map.!) rollCounts 2) == 1
                      b = ((Map.!) rollCounts 7) == 1
                      c = ((Map.!) rollCounts 12) == 1

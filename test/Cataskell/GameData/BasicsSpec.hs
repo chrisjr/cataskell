@@ -17,12 +17,18 @@ instance Arbitrary Item where
 instance Arbitrary Color where
   arbitrary = elements [Red, White, Orange, Blue]
 
+instance Arbitrary Inhabited where
+  arbitrary = elements [Settlement, City]
+
 instance Arbitrary Construct where
   arbitrary = do
     p <- arbitrary
     e <- arbitrary
     c <- arbitrary
     elements [built . settlement $ Just (p, c), built . city $ Just (p,c), built . road $ Just (e,c)]
+
+instance Arbitrary DevelopmentCard where
+  arbitrary = elements [Knight, RoadBuilding, Invention, Monopoly, VictoryPoint]
 
 main :: IO ()
 main = hspec spec
