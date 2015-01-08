@@ -13,8 +13,13 @@ import Control.Monad.State
 import Data.List
 import Data.Maybe (fromJust, isJust)
 import Data.Monoid (mempty)
+import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
+import Cataskell.GameData.ActionsSpec()
+import Cataskell.GameData.BasicsSpec()
+import Cataskell.GameData.BoardSpec()
+import Cataskell.GameData.PlayerSpec()
 
 newtype InitialGame = InitialGame Game
   deriving (Eq, Ord, Show, Read)
@@ -44,6 +49,19 @@ randomGames = evalRand mkGames (mkStdGen 0)
 
 instance Arbitrary Game where
   arbitrary = elements randomGames
+  shrink f = tail $ Game <$> [(_phase f)]
+                    <*> shrink' (_board f)
+                    <*> shrink' (_players f)
+                    <*> shrink' (_currentPlayer f)
+                    <*> shrink' (_turnAdvanceBy f)
+                    <*> shrink' (_rolled f)
+                    <*> shrink'' (_validActions f)
+                    <*> shrink'' (_openTrades f)
+                    <*> [(_lastAction f)]
+                    <*> shrink' (_allCards f)
+                    <*> shrink' (_winner f)
+    where shrink' a = a : shrink a
+          shrink'' a = subsequences a
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -65,10 +83,11 @@ spec = do
       \game -> let l = length $ view players $ fromInitialGame (game :: InitialGame)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
-      \game stdGen -> let g' = fromInitialGame (game :: InitialGame) 
+      \game stdGen -> let g' = fromInitialGame (game :: InitialGame)
                           i' = evalRand (evalStateT (findPlayerByColor Blue) g') (stdGen :: StdGen)
                           i = fromPlayerIndex i'
                           in i >= 0 && i < 4
+
   describe "Game invariants" $ do
     it "has a non-zero list of next actions, unless at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
@@ -95,12 +114,24 @@ spec = do
                    ]
       let offerGame = (foldr (.) id setAll) game
       let offerAndAcceptGame = set openTrades [Offer offer', accept'^?!action.trade] offerGame
-      let actionsFromGame g = evalGame possibleTradeActions g (mkStdGen 0)
-
+      let getFromGame x g = evalGame x g (mkStdGen 0)
+      let actionsFromGame = getFromGame possibleTradeActions
       it "should generate an accept when offer is present" $ do
         actionsFromGame offerGame `shouldSatisfy` elem accept'
       it "should generate a complete when offer and acceptance are present" $ do
         actionsFromGame offerAndAcceptGame `shouldSatisfy` elem complete'
+
+      let checkFor cImplies x game' = let g = (game' :: Game)
+                                          openTrades' = getFromGame (use openTrades) g
+                                          acts' = actionsFromGame g
+                                          hasAccepts = any ((== Just True) . fmap x . preview (action.trade)) acts'
+                                      in  any cImplies openTrades' <= hasAccepts
+      it "should always generate an accept when offers are present" $ property $
+        checkFor (isJust . toOffer) isAccept
+      it "should always generate a reject when offers are present" $ property $
+        checkFor (isJust . toOffer) isReject
+      it "should always generate a complete when accepts are present" $ property $
+        checkFor isAccept isComplete
     context "makeDiscards" $ do
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
@@ -127,7 +158,7 @@ spec = do
         forM_ (zip3 [0..] playerIs (map fst gs)) $ \(i, c, g) ->
           it ("should permit placement for player " ++ (show c)) $ do
             view currentPlayer g `shouldBe` toPlayerIndex c
-            views validActions length g `shouldSatisfy` (<= (54 - ((i `div` 2) * 3))) 
+            views validActions length g `shouldSatisfy` (<= (54 - ((i `div` 2) * 3)))
       it "should transition to Normal phase when placements are complete" $ do
         view phase normalGame `shouldBe` Normal
         views validActions length normalGame `shouldBe` 1
@@ -199,7 +230,7 @@ spec = do
           view openTrades g' `shouldBe` [Offer tradeOffer']
         it "should allow others to accept or reject" $ do
           let vA = view validActions g'
-          let hasAll acts' valids' = all ((flip elem) valids') acts'
+          let hasAll acts' valids' = all (`elem` valids') acts'
           vA `shouldSatisfy` hasAll acceptances
           vA `shouldSatisfy` hasAll rejections
         it "should allow the original player to cancel" $ do
@@ -244,7 +275,7 @@ spec = do
         -- let isCurrentPlayer p g = p^.playerIndex == view currentPlayer g
         let isBuildSettlement x = isSettlement `fmap` (x ^? action.item) == Just True
         -- let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g && spaceOnBoard p g
-        -- let findSuitable g = findIndex suitable $ zip (view players g) (repeat g) 
+        -- let findSuitable g = findIndex suitable $ zip (view players g) (repeat g)
         let findSuitable (g,_) = any isBuildSettlement $ view validActions g
         let maybeGameIndex = findIndex findSuitable $ take n gs
 
@@ -253,7 +284,7 @@ spec = do
           let gI' = fromJust maybeGameIndex
           let g' = fst $ (gs !! gI')
           let vA = view validActions g'
-          -- let suitablePI = toPlayerIndex findSuitable g' 
+          -- let suitablePI = toPlayerIndex findSuitable g'
           vA `shouldSatisfy` (any isBuildSettlement)
         else fail $ "couldn't find a player able to build a settlement after " ++ (show n) ++ " actions"
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
@@ -322,8 +353,6 @@ spec = do
           let pRes = map (view resources) $ view players postMonopoly
           let totalLumber = sum $ map (lumber) pRes
           pRes `shouldSatisfy` (all (\r -> lumber r == 0 || lumber r == totalLumber))
-          
-
     context "in End phase" $ do
       it "has no more validActions" $ do
         pending
