@@ -182,12 +182,24 @@ complete acceptance = do
   let offer' = acceptance ^. offer
   let p1 = offer' ^. offeredBy
   p2 <- acceptance ^? accepter
-  return $ PlayerAction
-      { _actor = p1
-      , _action = Trade (CompleteTrade { _offer = offer'
-                                       , _accepter = p2
-                                       })
-      }
+  return PlayerAction
+     { _actor = p1
+     , _action = Trade CompleteTrade { _offer = offer'
+                                     , _accepter = p2
+                                     }
+     }
+
+isAccept :: TradeAction -> Bool
+isAccept (Accept{}) = True
+isAccept _ = False
+
+isReject :: TradeAction -> Bool
+isReject (Reject{}) = True
+isReject _ = False
+
+isComplete :: TradeAction -> Bool
+isComplete (CompleteTrade{}) = True
+isComplete _ = False
 
 rollFor :: PlayerIndex -> GameAction
 rollFor pI = PlayerAction

@@ -5,6 +5,7 @@ module Cataskell.Game where
 import Control.Monad.Identity
 import Control.Monad.Random
 import Control.Monad.State
+import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty, (<>))
@@ -164,8 +165,8 @@ preconditions (PlayerAction playerIndex' action')
         Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) playerIndex']
         Reject {} -> [phaseOneOf [Normal]]
         CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
-                                          , hasResourcesFor (offer'^.offering) playerIndex'
-                                          , hasResourcesFor (offer'^.asking) accepterIndex']
+                                               , hasResourcesFor (offer'^.offering) playerIndex'
+                                               , hasResourcesFor (offer'^.asking) accepterIndex']
         CancelTrade _ -> [phaseOneOf [Normal]]
         Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex']
       Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
@@ -276,9 +277,10 @@ doTrade playerIndex' tradeAction'
 addAndUpdateTrades :: (RandomGen g) => TradeAction -> GameState g
 addAndUpdateTrades tradeAction' = do
   openTrades <>= [tradeAction']
-  currentPlayerIndex <- use currentPlayer
+  newTrades <- possibleTradeActions
   validActions' <- use validActions
-  newTrades <- possibleTradeActions currentPlayerIndex
+  -- let hasComplete = any ((== Just True) . fmap isComplete . preview (action.trade)) newTrades
+  -- assert (not (isAccept tradeAction') || hasComplete) 
   validActions .= nub (validActions' ++ newTrades)
 
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
@@ -359,7 +361,7 @@ genPlayerActions :: (RandomGen g) => GameState g
 genPlayerActions = do
   currentPlayerIndex <- use currentPlayer
   purchases' <- possiblePurchases currentPlayerIndex
-  trades <- possibleTradeActions currentPlayerIndex
+  trades <- possibleTradeActions
   cardsToPlay <- possibleDevelopmentCards currentPlayerIndex
   validActions .= purchases' ++ trades ++ cardsToPlay ++ [mkEndTurn currentPlayerIndex]
 
@@ -379,9 +381,10 @@ possiblePurchases playerIndex' = do
   let mkPurchase = purchase playerIndex' . Building
   return $ cards' ++ map mkPurchase possibleBuildings
 
-possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
-possibleTradeActions playerIndex' = do
+possibleTradeActions :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleTradeActions = do
   openTrades' <- use openTrades
+  playerIndex' <- use currentPlayer
   let base = [mkOffer playerIndex' mempty mempty]
   let offer' = listToMaybe $ mapMaybe toOffer openTrades'
   if isJust offer'
@@ -391,10 +394,11 @@ possibleTradeActions playerIndex' = do
     others <- otherPlayers
     let otherIs = map (view playerIndex) others
     let rejects = map (reject offer'' Nothing) otherIs
-    let existingAccepts = filter (\x -> case x of Accept _ _ -> True; _ -> False) openTrades'
+    let existingAccepts = filter isAccept openTrades'
+    let acceptances' = filter (\a -> not $ any ((== Just (a^.actor)) . preview accepter) existingAccepts) acceptances
     let completes = mapMaybe complete existingAccepts
     let cancels = if (offer''^.offeredBy == playerIndex') then [cancel offer''] else []
-    return $ acceptances ++ rejects ++ cancels ++ completes
+    assert (null existingAccepts || not (null completes)) return $ acceptances' ++ rejects ++ cancels ++ completes
   else return base
 
 otherPlayers :: (RandomGen g) => GameStateReturning g [Player]

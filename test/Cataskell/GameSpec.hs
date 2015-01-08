@@ -5,10 +5,8 @@ import Test.QuickCheck
 import Cataskell.Game
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
-import Cataskell.GameData.Board
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
-import Cataskell.Util (iterate')
 import Control.Monad.Random
 import Control.Monad.Identity
 import Control.Monad.State
@@ -39,19 +37,13 @@ mkGame = do
   foldM (\acc _ -> (execStateT randomAct) acc) initialG [0..steps]
 
 mkGames :: (RandomGen g) => Rand g [Game]
-mkGames = replicateM 50 mkGame
+mkGames = replicateM 100 mkGame
 
 randomGames :: [Game]
 randomGames = evalRand mkGames (mkStdGen 0)
 
 instance Arbitrary Game where
   arbitrary = elements randomGames
-    -- initial <- arbitrary
-    -- stdGen <- (arbitrary :: Gen StdGen)
-    -- numSteps <- choose (0, 20)
-    -- let randomGs = iterate' (\(x, r) -> runGame randomAct x r) (initial, stdGen)
-    -- return $ fst (randomGs !! numSteps)
-    -- return $ fromInitialGame initial
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -103,7 +95,7 @@ spec = do
                    ]
       let offerGame = (foldr (.) id setAll) game
       let offerAndAcceptGame = set openTrades [Offer offer', accept'^?!action.trade] offerGame
-      let actionsFromGame g = evalGame (use currentPlayer >>= possibleTradeActions) g (mkStdGen 0)
+      let actionsFromGame g = evalGame possibleTradeActions g (mkStdGen 0)
 
       it "should generate an accept when offer is present" $ do
         actionsFromGame offerGame `shouldSatisfy` elem accept'
@@ -227,6 +219,8 @@ spec = do
 
         it "should let another player accept" $ do
           view openTrades accepted `shouldBe` [acceptedOffer, acceptance']
+          let pta = evalGame possibleTradeActions g' randRolled
+          pta `shouldSatisfy` elem complete'
           let vA = view validActions g'
           vA `shouldSatisfy` elem complete'
 
