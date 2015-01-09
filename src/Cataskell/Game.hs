@@ -90,7 +90,7 @@ update action' = do
   let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
   let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
   
-  unless done $ error (show action') -- fail on an invalid action
+  -- unless done $ error (show action') -- fail on an invalid action
 
   lastAction .= Just (action', done)
   when (done && builtFreeRoad) $ if p == Initial then progress else handleFreeRoads p
@@ -302,9 +302,7 @@ doTrade playerIndex' tradeAction'
 addAndUpdateTrades :: (RandomGen g) => TradeAction -> GameState g
 addAndUpdateTrades tradeAction' = do
   openTrades <>= [tradeAction']
-  newTrades <- possibleTradeActions
-  validActions' <- use validActions
-  validActions .= nub (validActions' ++ newTrades)
+  genPlayerActions
 
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
 doExchange playerIndex' offer' = do
@@ -422,15 +420,19 @@ possibleTradeActions = do
   if isJust offer'
   then do
     let offer'' = fromJust offer'
+    let existingAccepts = filter isAccept openTrades'
+    let existingRejects = filter isReject openTrades'
+    let alreadyReplied = mapMaybe (^? rejecter) existingRejects ++ mapMaybe (^? accepter) existingAccepts
+    let canReply a = (a^.actor) `notElem` alreadyReplied
     acceptances <- mkAccept offer''
     others <- otherPlayers
     let otherIs = map (view playerIndex) others
     let rejects = map (reject offer'' Nothing) otherIs
-    let existingAccepts = filter isAccept openTrades'
-    let acceptances' = filter (\a -> not $ any ((== Just (a^.actor)) . preview accepter) existingAccepts) acceptances
+    let acceptances' = filter canReply acceptances
+    let rejects' = filter canReply rejects
     let completes = mapMaybe complete existingAccepts
     let cancels = if (offer''^.offeredBy == playerIndex') then [cancel offer''] else []
-    assert (null existingAccepts || not (null completes)) return $ acceptances' ++ rejects ++ cancels ++ completes
+    assert (null existingAccepts || not (null completes)) return $ acceptances' ++ rejects' ++ cancels ++ completes
   else return base
 
 otherPlayers :: (RandomGen g) => GameStateReturning g [Player]
