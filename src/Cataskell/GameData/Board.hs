@@ -198,6 +198,16 @@ freeEdges b
   = let occupiedEdges = Map.keys $ getRoads b
     in  allEdges \\ occupiedEdges
 
+valid :: Construct -> Board -> Bool
+valid bldg brd
+  = case bldg of
+      Edifice (OnPoint p _ Settlement) ->
+        p `Map.notMember` getHabitations brd
+      Edifice (OnPoint p c City) ->
+        Map.lookup p (getHabitations brd) == Just (OnPoint p c Settlement)
+      Roadway (OnEdge e _) ->
+        e `Map.notMember` getRoads brd
+
 -- | Adjusts the board to add a building/road.
 -- | Checks that nothing was present (if settlement or road), or that a settlement
 -- | belonging to the player was there (if city). 
