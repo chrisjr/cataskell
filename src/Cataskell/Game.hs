@@ -181,7 +181,7 @@ preconditions (PlayerAction playerIndex' action')
                             in  maybeValid == Just True || isNothing maybeValid ]
       Trade x -> case x of
         Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
-        Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) playerIndex']
+        Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
         Reject {} -> [phaseOneOf [Normal]]
         CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
                                                , hasResourcesFor (offer'^.offering) playerIndex'
@@ -440,7 +440,7 @@ otherPlayers = do
 mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g [GameAction]
 mkAccept offer' = do
   ps <- otherPlayers
-  let ps' = filter (\p -> sufficient (view resources p) (offer'^.asking)) ps
+  let ps' = filter (sufficient (offer'^.asking) . view resources) ps
   let couldAccept = map (view playerIndex) ps'
   return $ map (accept offer') couldAccept
 
