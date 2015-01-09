@@ -541,6 +541,7 @@ backToNormal = do
 toSpecialPhase :: (RandomGen g) => SpecialPhase -> PlayerIndex -> GameState g
 toSpecialPhase special' playerIndex' = do
   phase .= Special special'
+  openTrades .= []
   case special' of
       FreeRoads _ -> do
         player' <- getPlayer playerIndex'
