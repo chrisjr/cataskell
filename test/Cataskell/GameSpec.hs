@@ -114,6 +114,12 @@ spec = do
 
   describe "GameStateReturning functions" $ do
     let game = head randomGames
+    context "simpleOffers" $ do
+      it "should not generate invalid actions" $ property $
+        \g -> let r' = mkStdGen 0
+                  pI = view currentPlayer g
+              in (g^.phase) == Normal ==>
+                and $ evalGame (simpleOffers pI >>= \x -> mapM isValid x) g r'
     context "possiblePurchases" $ do
       it "should not generate invalid actions" $ property $
         \g -> let r' = mkStdGen 0

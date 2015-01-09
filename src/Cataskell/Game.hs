@@ -8,6 +8,7 @@ import Control.Monad.State
 import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
+import Control.Applicative ((<$>), (<*>))
 import Data.Monoid (mempty, (<>))
 import Data.Maybe (fromJust, isJust, isNothing, mapMaybe, listToMaybe)
 import Data.List (find, findIndex, elemIndex, nub)
@@ -88,6 +89,8 @@ update action' = do
   p <- use phase
   let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
   let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
+  
+  unless done $ error (show action') -- fail on an invalid action
 
   lastAction .= Just (action', done)
   when (done && builtFreeRoad) $ if p == Initial then progress else handleFreeRoads p
@@ -200,7 +203,7 @@ doAction act'
             doBuild actorIndex c'
             player' <- getPlayer actorIndex
             let totalSettlements = length . filter isSettlement $ player' ^. constructed
-            when (deconstruct c' == Potential (H Settlement)) $ do
+            when ((c'^?onPoint.buildingType) == Just Settlement) $ do
               when (totalSettlements == 2) $ giveStartingResources actorIndex
               let c'' = fromJust $ c' ^? onPoint
               newRoads <- uses (board.roads) (initialRoadsFor player' c'')
@@ -209,7 +212,7 @@ doAction act'
             M monopoly' -> doMonopoly actorIndex monopoly'
             I invention' -> doInvention actorIndex invention'
             R moveRobber' -> doMoveRobber moveRobber'
-          Purchase x -> doPurchase actorIndex x -- already checked resources
+          Purchase x -> doPurchase actorIndex x >> genPlayerActions -- already checked resources
           Trade x -> doTrade actorIndex x
           Discard x -> doDiscard actorIndex x
           PlayCard x -> doPlayCard actorIndex x
@@ -254,7 +257,7 @@ addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
 addToResources i res = players . ix (fromPlayerIndex i) . resources <>= res
 
 payFor :: (RandomGen g) => PlayerIndex -> Item -> GameState g
-payFor playerIndex' item = addToResources playerIndex' (mkNeg $ cost item)
+payFor playerIndex' item' = addToResources playerIndex' (mkNeg $ cost item')
 
 doPurchase :: (RandomGen g) => PlayerIndex -> Item -> GameState g
 doPurchase playerIndex' item' = do
@@ -357,8 +360,9 @@ doMonopoly playerIndex' (MonopolyOn resType) = do
   backToNormal
 
 doInvention :: (RandomGen g) => PlayerIndex -> Invention -> GameState g
-doInvention playerIndex' (InventionOf res)
-  = players . ix (fromPlayerIndex playerIndex') . resources <>= res
+doInvention playerIndex' (InventionOf res) = do 
+  players . ix (fromPlayerIndex playerIndex') . resources <>= res
+  backToNormal
 
 doMoveRobber :: (RandomGen g) => MoveRobber -> GameState g
 doMoveRobber (MoveRobber dest) = do
@@ -400,11 +404,19 @@ possiblePurchases playerIndex' = do
   let mkPurchase = purchase playerIndex' . Building
   return $ cards' ++ map mkPurchase possibleBuildings
 
+simpleOffers :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+simpleOffers playerIndex' = do
+  pRes <- use (players . ix (fromPlayerIndex playerIndex') . resources)
+  let singles = resCombinationsForTotal 1
+  let canOffer = filter (sufficient pRes) singles
+  let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> singles
+  return offers
+
 possibleTradeActions :: (RandomGen g) => GameStateReturning g [GameAction]
 possibleTradeActions = do
   openTrades' <- use openTrades
   playerIndex' <- use currentPlayer
-  let base = [mkOffer playerIndex' mempty mempty]
+  base <- simpleOffers playerIndex'
   let offer' = listToMaybe $ mapMaybe toOffer openTrades'
   if isJust offer'
   then do
