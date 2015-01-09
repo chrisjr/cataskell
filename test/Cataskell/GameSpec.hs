@@ -13,7 +13,7 @@ import Control.Monad.State
 import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust, isJust, mapMaybe)
-import Data.Monoid (mempty)
+import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
@@ -100,6 +100,17 @@ spec = do
       \game -> let scores' = evalGame scores game (mkStdGen 0)
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores'
                in  (fst highestCount < 10) || (snd highestCount == 1)
+    it "should deduct resources when a valid purchase is made" $ property $
+      \game pI c' -> 
+        let bldg = Building (c' :: Construct)
+            purchase' = purchase (pI :: PlayerIndex) bldg
+            stdGen = mkStdGen 0
+        in evalGame (isValid purchase') game stdGen ==>
+          let i = fromPlayerIndex pI
+              oldRes = game ^. players . ix i . resources
+              (g', _) = runGame (update purchase') game (mkStdGen 0)
+              newRes = g' ^. players . ix i . resources
+          in newRes == (oldRes <> (mkNeg $ cost bldg))
 
   describe "GameStateReturning functions" $ do
     let game = head randomGames
@@ -149,7 +160,7 @@ spec = do
 
   describe "An example game" $ do
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
-    let gs = iterate (\(x, r) -> runGame randomAct x r) (initialGame, r')
+    let gs = iterate (uncurry (runGame randomAct)) (initialGame, r')
     let (normalGame, _) = gs !! 16
 
     context "in Initial phase" $ do

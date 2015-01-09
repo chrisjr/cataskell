@@ -198,8 +198,8 @@ freeEdges b
   = let occupiedEdges = Map.keys $ getRoads b
     in  allEdges \\ occupiedEdges
 
-valid :: Construct -> Board -> Bool
-valid bldg brd
+validConstruct :: Construct -> Board -> Bool
+validConstruct bldg brd
   = case bldg of
       Edifice (OnPoint p _ Settlement) ->
         p `Map.notMember` getHabitations brd

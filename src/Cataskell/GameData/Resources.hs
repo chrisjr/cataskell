@@ -61,11 +61,6 @@ cost c = byItemType itemType'
           Road ->  mempty { lumber = 1, brick = 1 }
           DevelopmentCard -> mempty { wool = 1, wheat = 1, ore = 1 }
 
-payFor :: ResourceCount -> Item -> Maybe ResourceCount
-payFor r c
-  = if sufficient r expense then Just (r <> mkNeg expense) else Nothing
-  where expense = cost c
-
 nonNegative :: ResourceCount -> Bool
 nonNegative = (flip sufficient) mempty
 

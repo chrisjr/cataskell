@@ -152,7 +152,7 @@ spec = do
       res' `shouldBe` Map.singleton Blue mempty { ore = 1 }
   describe "build" $ do
     it "should return a changed board when building a valid item" $ property $
-      \board construct -> valid (construct :: Construct) (board :: Board) ==>
+      \board construct -> validConstruct (construct :: Construct) (board :: Board) ==>
         board /= build construct board
   describe "validRoadsFor" $ do
     it "should never include an existing road among valid options" $ property $

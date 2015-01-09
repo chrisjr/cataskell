@@ -9,7 +9,7 @@ import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty, (<>))
-import Data.Maybe (fromJust, isJust, mapMaybe, listToMaybe)
+import Data.Maybe (fromJust, isJust, isNothing, mapMaybe, listToMaybe)
 import Data.List (find, findIndex, elemIndex, nub)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -104,17 +104,17 @@ handleFreeRoads phase' = do
 -- | Checks that the action is valid and executes it if so
 checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 checkAndExecute action' = do
-  valid <- isValid action'
-  when valid $ doAction action'
-  return valid
+  validAct <- isValid action'
+  when validAct $ doAction action'
+  return validAct
 
 -- | Returns true iff all preconditions are met
 isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 isValid action' = do
   current <- get
   let predicates' = preconditions action'
-  let valid = all ($ current) predicates'
-  return valid
+  let validAct = all ($ current) predicates'
+  return validAct
 
 -- | Creates a predicate that is true when a game is in one of the specified phases.
 phaseOneOf :: [Phase] -> Game -> Bool
@@ -170,7 +170,12 @@ preconditions (PlayerAction playerIndex' action')
                     , \_ -> x /= VictoryPoint] -- can't play a victory point
       Purchase x -> [ phaseOneOf [Normal]
                     , turnIs playerIndex'
-                    , hasResourcesForItem x playerIndex']
+                    , hasResourcesForItem x playerIndex'
+                    , \g -> let construct' = x ^? building
+                                maybeValid = do
+                                  c <- construct'
+                                  return $ validConstruct c (g ^. board)
+                            in  maybeValid == Just True || isNothing maybeValid ]
       Trade x -> case x of
         Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
         Accept offer' _ -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) playerIndex']
@@ -248,17 +253,21 @@ replaceInventory playerIndex' old' new' extraActions = do
 addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
 addToResources i res = players . ix (fromPlayerIndex i) . resources <>= res
 
+payFor :: (RandomGen g) => PlayerIndex -> Item -> GameState g
+payFor playerIndex' item = addToResources playerIndex' (mkNeg $ cost item)
+
 doPurchase :: (RandomGen g) => PlayerIndex -> Item -> GameState g
-doPurchase playerIndex' item'
-  = case item' of
+doPurchase playerIndex' item' = do
+  payFor playerIndex' item'
+  case item' of
       (Building r@(Roadway (OnEdge _ _))) ->
-        replaceInventory playerIndex' (deconstruct r) (Just item') $ return ()
+        doBuild playerIndex' r
       (Building s@(Edifice (OnPoint _ _ Settlement))) ->
-        replaceInventory playerIndex' (deconstruct s) (Just item') $ return ()
-      (Building c@(Edifice (OnPoint p' c' City))) ->
-        replaceInventory playerIndex' (deconstruct c) (Just item') $ do
-          let settlementWas = Building (Edifice (OnPoint p' c' Settlement))
-          replaceInventory playerIndex' settlementWas (Just (unbuilt settlement)) $ return ()
+        doBuild playerIndex' s
+      (Building c@(Edifice (OnPoint p' c' City))) -> do
+        let settlementWas = Building . built $ settlement (Just (p', c'))
+        replaceInventory playerIndex' settlementWas (Just $ unbuilt settlement) $ return ()
+        doBuild playerIndex' c
       Card _ -> getCard playerIndex'
       Potential DevelopmentCard -> getCard playerIndex'
       Potential (H _) -> return () -- can't buy potential settlement without location

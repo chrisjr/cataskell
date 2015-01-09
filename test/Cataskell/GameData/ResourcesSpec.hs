@@ -50,13 +50,6 @@ spec = do
       (sufficient res2 . cost $ unbuilt city) `shouldBe` False
       (sufficient res2 . cost $ unbuilt road) `shouldBe` False
       (sufficient res2 . cost $ unbuilt devCard) `shouldBe` True
-    it "can be used to pay for an item" $ do
-      let res3 = mempty { lumber = 1, brick = 1 }
-      (payFor res3 $ unbuilt road) `shouldBe` Just mempty
-      (payFor mempty $ unbuilt road) `shouldBe` Nothing
-      let res4 = mempty { wool = 1, wheat = 1, ore = 1}
-      (payFor res4 $ unbuilt devCard) `shouldBe` Just mempty
-      (payFor mempty $ unbuilt devCard) `shouldBe` Nothing
     it "can be checked to be all non-negative" $ property $
       \res -> nonNegative (res :: ResourceCount)
   describe "resourceFromTerrain" $ do
