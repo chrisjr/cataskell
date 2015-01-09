@@ -27,10 +27,20 @@ newtype InitialGame = InitialGame Game
 
 toInitialGame :: Game -> InitialGame
 toInitialGame x | x ^. phase == Initial = InitialGame x
-                | otherwise = error "Game state is not initial"
+                | otherwise = error "Game phase is not initial"
 
 fromInitialGame :: InitialGame -> Game
 fromInitialGame (InitialGame x) = x
+
+newtype NormalGame = NormalGame Game
+  deriving (Eq, Ord, Show, Read)
+
+toNormalGame :: Game -> NormalGame
+toNormalGame x | x ^. phase == Normal = NormalGame x
+               | otherwise = error "Game phase is not Normal"
+
+fromNormalGame :: NormalGame -> Game
+fromNormalGame (NormalGame x) = x
 
 mkSteps :: (RandomGen g) => Rand g Int
 mkSteps = getRandomR (0, 500)
@@ -62,6 +72,9 @@ instance Arbitrary Game where
                     <*> shrink' (_allCards f)
                     <*> shrink' (_winner f)
     where shrink' a = a : shrink a
+
+instance Arbitrary NormalGame where
+  arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -116,22 +129,22 @@ spec = do
     let game = head randomGames
     context "simpleOffers" $ do
       it "should not generate invalid actions" $ property $
-        \g -> let r' = mkStdGen 0
-                  pI = view currentPlayer g
-              in (g^.phase) == Normal ==>
-                and $ evalGame (simpleOffers pI >>= \x -> mapM isValid x) g r'
+        \ng -> let r' = mkStdGen 0
+                   g = fromNormalGame ng
+                   pI = view currentPlayer g
+               in and $ evalGame (simpleOffers pI >>= \x -> mapM isValid x) g r'
     context "possiblePurchases" $ do
       it "should not generate invalid actions" $ property $
-        \g -> let r' = mkStdGen 0
-                  pI = view currentPlayer g
-              in (g^.phase) == Normal ==>
-                and $ evalGame (possiblePurchases pI >>= \x -> mapM isValid x) g r'
+        \ng -> let r' = mkStdGen 0
+                   g = fromNormalGame ng
+                   pI = view currentPlayer g
+               in and $ evalGame (possiblePurchases pI >>= \x -> mapM isValid x) g r'
     context "possibleDevelopmentCards" $ do
       it "should not generate invalid actions" $ property $
-        \g -> let r' = mkStdGen 0
-                  pI = view currentPlayer g
-              in (g^.phase) == Normal ==>
-                and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
+        \ng -> let r' = mkStdGen 0
+                   g = fromNormalGame ng
+                   pI = view currentPlayer g
+               in  and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
 
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
@@ -156,20 +169,22 @@ spec = do
       let checkFor x game' = let acts' = actionsFromGame (game' :: Game)
                              in  any ((== Just True) . fmap x . preview (action.trade)) acts'
       it "should always generate an accept when offers are present" $ property $
-        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isAccept g
+        \ng -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> checkFor isAccept g
       it "should always generate a reject when offers are present" $ property $
-        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isReject g
+        \ng -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isReject g
       it "should never have an accept and reject by the same player" $ property $
-        \g -> checkIfAny (isJust . toOffer) (g :: Game) ==> let trades' = tradesFrom g
-                                                                rejecters = map (^?!rejecter) $ filter isReject trades'
-                                                                accepters = map (^?!accepter) $ filter isAccept trades'
-                                                            in  null (accepters `intersect` rejecters)
+        \ng -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> 
+          let trades' = tradesFrom g
+              rejecters = map (^?!rejecter) $ filter isReject trades'
+              accepters = map (^?!accepter) $ filter isAccept trades'
+          in  null (accepters `intersect` rejecters)
       it "should always generate a complete when accepts are present" $ property $
-        \g -> checkIfAny isAccept (g :: Game) ==> checkFor isComplete g
+        \ng -> let g = fromNormalGame ng in checkIfAny isAccept (g :: Game) ==> checkFor isComplete g
       it "should never produce invalid actions" $ property $
-        \g -> let r' = mkStdGen 0
-                  ptas = evalGame possibleTradeActions g r'
-              in  all (\x -> evalGame (isValid x) g r') ptas
+        \ng -> let g = fromNormalGame ng 
+                   r' = mkStdGen 0
+                   ptas = evalGame possibleTradeActions g r'
+               in  all (\x -> evalGame (isValid x) g r') ptas
     context "makeDiscards" $ do
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
@@ -353,29 +368,32 @@ spec = do
       context "MovingRobber" $ do
         describe "the player must move the robber" $ do
           specify "to a hex ringed by players with >2 visible victory points" $ property $
-            \g -> let scores' = evalGame scores (g :: Game) randRolled 
-                  in (view phase g == Normal) && any (>2) scores' ==>
-                    let (g', _) = runGame (forceRoll 7) g randRolled 
-                        psScores = zip (map toPlayerIndex [0..3]) scores'
-                        pColors = Map.fromList $ map (\p -> (p^.playerIndex, color p)) $ view players g'
-                        high = map fst $ filter ((>2) . snd) psScores
-                        acceptableColors = mapMaybe (`Map.lookup` pColors) high
-                        vA = view validActions g'
-                        checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
-                        isValidRobberMove a = case a^.action of
-                                                SpecialAction (R (MoveRobber dest)) -> checkDest dest
-                                                _ -> False
-                    in  all isValidRobberMove vA
+            \ng -> let g = fromNormalGame ng
+                       scores' = evalGame scores (g :: Game) randRolled 
+                   in any (>2) scores' ==>
+                        let (g', _) = runGame (forceRoll 7) g randRolled 
+                            psScores = zip (map toPlayerIndex [0..3]) scores'
+                            pColors = Map.fromList $ map (\p -> (p^.playerIndex, color p)) $ view players g'
+                            high = map fst $ filter ((>2) . snd) psScores
+                            acceptableColors = mapMaybe (`Map.lookup` pColors) high
+                            vA = view validActions g'
+                            checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
+                            isValidRobberMove a = case a^.action of
+                                                    SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                    _ -> False
+                        in  all isValidRobberMove vA
           specify "to an unoccupied hex, otherwise" $ property $ do
-            \g -> let scores' = evalGame scores (g :: Game) randRolled 
-                   in (view phase g == Normal) && not (any (>2) scores') ==>
-                     let (g', _) = runGame (forceRoll 7) g randRolled 
-                         vA = view validActions g'
-                         checkDest dest = null $ evalGame (neighborBuildings dest) g' randRolled
-                         isValidRobberMove a = case a^.action of
-                                                 SpecialAction (R (MoveRobber dest)) -> checkDest dest
-                                                 _ -> False
-                     in  all isValidRobberMove vA
+            \ng -> 
+               let g = fromNormalGame ng
+                   scores' = evalGame scores g randRolled 
+               in not (any (>2) scores') ==>
+                       let (g', _) = runGame (forceRoll 7) g randRolled 
+                           vA = view validActions g'
+                           checkDest dest = null $ evalGame (neighborBuildings dest) g' randRolled
+                           isValidRobberMove a = case a^.action of
+                                                   SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                   _ -> False
+                       in  all isValidRobberMove vA
       context "FreeRoads" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
         let (g', _) = runGame (update playCard') withRoadBuilding randRolled
