@@ -184,10 +184,11 @@ preconditions (PlayerAction playerIndex' action')
         Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
         Reject {} -> [phaseOneOf [Normal]]
         CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
+                                               , \_ -> offer'^.offeredBy == playerIndex'
                                                , hasResourcesFor (offer'^.offering) playerIndex'
                                                , hasResourcesFor (offer'^.asking) accepterIndex'
                                                , turnIs playerIndex']
-        CancelTrade _ -> [phaseOneOf [Normal], turnIs playerIndex']
+        CancelTrade offer' -> [phaseOneOf [Normal], \_ -> offer'^.offeredBy == playerIndex', turnIs playerIndex']
         Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
       Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
                                      , \_ -> totalResources r == i ]
