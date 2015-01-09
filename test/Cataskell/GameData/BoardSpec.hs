@@ -47,14 +47,16 @@ instance Arbitrary OnPoint where
 
 instance Arbitrary RoadMap where
   arbitrary = do
-    let e = emptyRoadMap
-    return e
+    roads' <- listOf (arbitrary :: Gen OnEdge)
+    let withRoads = Map.fromList $ map (\r -> (r^.edge, Just r)) roads'
+    return $ Map.union withRoads emptyRoadMap
   shrink m = Map.fromList <$> shrink (Map.toList m)
 
 instance Arbitrary BuildingMap where
   arbitrary = do
-    let e = emptyBuildingMap
-    return e
+    buildings' <- listOf (arbitrary :: Gen OnPoint)
+    let withBuildings = Map.fromList $ map (\b -> (b^.point, Just b)) buildings'
+    return $ Map.union withBuildings emptyBuildingMap
   shrink m = Map.fromList <$> shrink (Map.toList m)
 
 instance Arbitrary Harbor where
@@ -131,7 +133,6 @@ spec = do
       Map.size emptyRoadMap `shouldBe` 72
     it "should start off empty" $ do
       Map.elems emptyRoadMap `shouldSatisfy` (all (== Nothing))
-
   describe "A Board" $ do
     it "should start off with no buildings and no roads" $ property $
       \board -> view buildings (board :: Board) == emptyBuildingMap
@@ -149,3 +150,15 @@ spec = do
       let board' = build bldg board
       let res' = allResourcesFromRoll 6 board'
       res' `shouldBe` Map.singleton Blue mempty { ore = 1 }
+  describe "validRoadsFor" $ do
+    it "should never include an existing road among valid options" $ property $
+      \board c -> let rm' = Map.keys $ getRoads (board :: Board)
+                      vr = validRoadsFor (c :: Color) board
+                      vr' = map (^?! onEdge.edge) vr
+                  in  not $ any (`elem` rm') vr'
+  describe "validSettlementsFor" $ do
+    it "should never include an existing settlement among valid options" $ property $
+      \board c -> let sm' = Map.keys $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
+                      vs = validSettlementsFor (c :: Color) board
+                      vs' = map (^?! onPoint.point) vs
+                  in  not $ any (`elem` sm') vs'
