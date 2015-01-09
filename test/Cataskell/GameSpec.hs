@@ -114,6 +114,19 @@ spec = do
 
   describe "GameStateReturning functions" $ do
     let game = head randomGames
+    context "possiblePurchases" $ do
+      it "should not generate invalid actions" $ property $
+        \g -> let r' = mkStdGen 0
+                  pI = view currentPlayer g
+              in (g^.phase) == Normal ==>
+                and $ evalGame (possiblePurchases pI >>= \x -> mapM isValid x) g r'
+    context "possibleDevelopmentCards" $ do
+      it "should not generate invalid actions" $ property $
+        \g -> let r' = mkStdGen 0
+                  pI = view currentPlayer g
+              in (g^.phase) == Normal ==>
+                and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
+
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)
@@ -147,6 +160,10 @@ spec = do
                                                             in  null (accepters `intersect` rejecters)
       it "should always generate a complete when accepts are present" $ property $
         \g -> checkIfAny isAccept (g :: Game) ==> checkFor isComplete g
+      it "should never produce invalid actions" $ property $
+        \g -> let r' = mkStdGen 0
+                  ptas = evalGame possibleTradeActions g r'
+              in  all (\x -> evalGame (isValid x) g r') ptas
     context "makeDiscards" $ do
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
@@ -199,6 +216,14 @@ spec = do
         let totalAsOf g = sum . map (views resources totalResources) $ view players g
         let (starting, _)  = gs !! 16
         totalAsOf rolledOnce `shouldSatisfy` (> (totalAsOf starting))
+
+      it "should allow for building roads once resources are sufficient" $ do
+        let findWoodBrickPlayer g = findIndex (\p -> sufficient (p^.resources) (cost $ unbuilt road)) (g^.players)
+        let findSuitable (g, _) = isJust $ findWoodBrickPlayer g
+        let (g', _) = fromJust $ find findSuitable gs
+        let pI = fromJust $ findWoodBrickPlayer g'
+        let isRoadPurchase a = maybe False (\item' -> isJust $ item' ^? building.onEdge) (a^? (action.item))
+        view validActions g' `shouldSatisfy` any isRoadPurchase
 
       let pOffer = mkOffer (view currentPlayer rolledOnce) (mempty { ore = 1} ) (mempty { wheat = 1 } )
 
@@ -280,28 +305,6 @@ spec = do
           ore beforeTradeP2 `shouldSatisfy` (< (ore afterTradeP2))
           wheat beforeTradeP1 `shouldSatisfy` (< (wheat afterTradeP1))
           wheat beforeTradeP2 `shouldSatisfy` (> (wheat afterTradeP2))
-
-      it "should allow for building, according to resources" $ do
-        let n = 200
-        -- let enoughForSettlement p = sufficient (p^.resources) (cost $ unbuilt settlement)
-        -- let unbuiltLeft p = any (== (unbuilt settlement)) (p^.constructed)
-        -- let spaceOnBoard p g = not . null $ validSettlementsFor (color p) (g^.board)
-        -- let canBuildSettlement p = enoughForSettlement p && unbuiltLeft p
-        -- let isCurrentPlayer p g = p^.playerIndex == view currentPlayer g
-        let isBuildSettlement x = isSettlement `fmap` (x ^? action.item) == Just True
-        -- let suitable (p, g) = canBuildSettlement p && isCurrentPlayer p g && spaceOnBoard p g
-        -- let findSuitable g = findIndex suitable $ zip (view players g) (repeat g)
-        let findSuitable (g,_) = any isBuildSettlement $ view validActions g
-        let maybeGameIndex = findIndex findSuitable $ take n gs
-
-        if isJust maybeGameIndex
-        then do
-          let gI' = fromJust maybeGameIndex
-          let g' = fst $ (gs !! gI')
-          let vA = view validActions g'
-          -- let suitablePI = toPlayerIndex findSuitable g'
-          vA `shouldSatisfy` (any isBuildSettlement)
-        else fail $ "couldn't find a player able to build a settlement after " ++ (show n) ++ " actions"
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
         let (robbed', _) = runGame updateForRoll rolled7 randRolled
         view phase robbed' `shouldBe` Special MovingRobber
