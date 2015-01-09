@@ -5,7 +5,6 @@ module Cataskell.Game where
 import Control.Monad.Identity
 import Control.Monad.Random
 import Control.Monad.State
-import Control.Monad ((>=>))
 import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map

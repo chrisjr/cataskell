@@ -12,7 +12,7 @@ import Data.List ((\\))
 import Control.Lens
 import Data.Monoid
 import qualified Data.Map.Strict as Map
-import Data.Maybe (catMaybes, listToMaybe, isJust, isNothing)
+import Data.Maybe (mapMaybe, listToMaybe, isNothing)
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -71,37 +71,36 @@ problemNeighborhoods :: HexMap -> ([CentralPoint], [CentralPoint])
 problemNeighborhoods m
   = let highValued x = x == 6 || x == 8
         pointAndNeighborValued (p, ns) = highValued ((Map.!) rollsMap p) && any highValued ns
-        lowValued (p, ns) = not ((highValued ((Map.!) rollsMap p)) || any highValued ns)
+        lowValued (p, ns) = not (highValued ((Map.!) rollsMap p) || any highValued ns)
         rollsMap = Map.map _roll m
-        hn' = Map.map (catMaybes . map ((flip Map.lookup) rollsMap)) hexNeighborhoods
+        hn' = Map.map (mapMaybe (`Map.lookup` rollsMap)) hexNeighborhoods
         lst = Map.toList hn'
     in  (map fst (filter pointAndNeighborValued lst), map fst (filter lowValued lst))
 
 checkHexNeighbors :: HexMap -> Bool
 checkHexNeighbors m
-  = length (fst $ problemNeighborhoods m) == 0
+  = null (fst $ problemNeighborhoods m)
 
 newHexMap' :: (RandomGen g) => Rand g HexMap
 newHexMap' = do
   terrains' <- shuffleM terrains
   rolls' <- shuffleM rolls
   desertLocation <- getRandomR (0, length terrains' - 1)
-  let hexList = map (uncurry mkHexCenter) $ zip terrains' rolls'
+  let hexList = zipWith mkHexCenter terrains' rolls'
   let (start, end) = splitAt desertLocation hexList
   let hexList' = start ++ [desert] ++ end
   return $ hexMapFromList hexList'
 
--- | If checkHexNeighbors fails, then swap one high-valued
+-- | If two high-value hexes are next to each other, then swap one into a low-valued neighborhood
 swapHighValued :: HexMap -> HexMap
 swapHighValued hexMap
   = let doSwap k1 k2 m = let v1 = (Map.!) m k1
                              v2 = (Map.!) m k2
                          in  Map.insert k2 v1 $ Map.insert k1 v2 m
         (tooHigh, tooLow) = problemNeighborhoods hexMap
-        m' = if (length tooHigh == 0)
-             then hexMap
-             else doSwap (head tooHigh) (head tooLow) hexMap
-    in  if (length tooHigh == 0) then m' else swapHighValued m'
+    in  if null tooHigh
+        then hexMap
+        else swapHighValued $ doSwap (head tooHigh) (head tooLow) hexMap
 
 -- | Generates a hexmap and swaps high-value pieces until a valid one is found
 newHexMap :: (RandomGen g) => Rand g HexMap
@@ -188,16 +187,15 @@ getRoads b = Map.mapMaybe id $ view roads b
 getRoadsFor :: Color -> Board -> Map.Map UndirectedEdge OnEdge
 getRoadsFor color' = filterByColor color' . getRoads
 
-
 freePoints :: Board -> [Point]
 freePoints b
-  = let occupiedPoints = Map.keys . Map.filter (isJust) $ view buildings b
+  = let occupiedPoints = Map.keys $ getHabitations b
         nns = concatMap (neighborPoints roadConnections) occupiedPoints
     in  allPoints \\ (occupiedPoints ++ nns)
 
 freeEdges :: Board -> [UndirectedEdge]
 freeEdges b
-  = let occupiedEdges = Map.keys . Map.filter (isJust) $ view roads b
+  = let occupiedEdges = Map.keys $ getRoads b
     in  allEdges \\ occupiedEdges
 
 -- | Adjusts the board to add a building/road.
@@ -207,14 +205,14 @@ build :: Construct -> Board -> Board
 build bldg brd
   = case bldg of
       Edifice bl@(OnPoint p _ Settlement) -> 
-        let buildings' = Map.adjust (\x -> if isNothing x then (Just bl) else x) p (brd ^. buildings) 
+        let buildings' = Map.adjust (\x -> if isNothing x then Just bl else x) p (brd ^. buildings) 
         in buildings .~ buildings' $ brd
       Edifice bl@(OnPoint p c City) -> 
-        let adjuster x = if x == Just (OnPoint p c Settlement) then (Just bl) else x
+        let adjuster x = if x == Just (OnPoint p c Settlement) then Just bl else x
             buildings' = Map.adjust adjuster p (brd ^. buildings) 
         in buildings .~ buildings' $ brd
       Roadway bl@(OnEdge e _) -> 
-        let roads' = Map.adjust (\x -> if isNothing x then (Just bl) else x) e (brd ^. roads)
+        let roads' = Map.adjust (\x -> if isNothing x then Just bl else x) e (brd ^. roads)
         in roads .~ roads' $ brd
 
 centersToNeighbors :: Map.Map CentralPoint [Point]
@@ -231,7 +229,7 @@ allResourcesFromRoll :: Int -> Board -> Map.Map Color ResourceCount
 allResourcesFromRoll r b = colorSums
   where colorSums = foldl (Map.unionWith (<>)) (Map.empty :: Map.Map Color ResourceCount) maps
         maps = map (uncurry Map.singleton) lst
-        lst = map (\(b', r') -> let r'' = if (b'^.buildingType == City) then mulResources r' 2 else r'
+        lst = map (\(b', r') -> let r'' = if b'^.buildingType == City then mulResources r' 2 else r'
                                 in (color b', r'')) bldgsRes
         bldgsRes = Map.elems $ Map.intersectionWith addUpRes bldgs ptsToHex
         addUpRes bld nhs = (bld, foldl (<>) mempty $ map getResForHex nhs)
@@ -258,7 +256,7 @@ validRoadsFor :: Color -> Board -> [Construct]
 validRoadsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
         freeEdges' = freeEdges board'
-        isAdjacentToMe e = (elem (point1 e) myPoints) || (elem (point2 e) myPoints)
+        isAdjacentToMe e = (point1 e `elem` myPoints) || (point2 e `elem` myPoints)
         validEdges = filter isAdjacentToMe freeEdges'
     in map (\e -> built (road $ Just (e, color'))) validEdges
 
@@ -266,7 +264,7 @@ validSettlementsFor :: Color -> Board -> [Construct]
 validSettlementsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
         freePoints' = freePoints board'
-        validPoints = filter ((flip elem) myPoints) freePoints'
+        validPoints = filter (`elem` myPoints) freePoints'
     in map (\p -> built (settlement $ Just (p, color'))) validPoints
 
 validCitiesFor :: Color -> Board -> [Construct]
