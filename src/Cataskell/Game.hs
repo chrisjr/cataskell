@@ -17,6 +17,7 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
 import Cataskell.GameData.Location
 import Cataskell.GameData.Player
+import Cataskell.GameData.Preconditions
 import Cataskell.GameData.Resources
 import Control.Lens
 import GHC.Generics (Generic)
@@ -90,8 +91,6 @@ update action' = do
   let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
   let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
   
-  -- unless done $ error (show action') -- fail on an invalid action
-
   lastAction .= Just (action', done)
   when (done && builtFreeRoad) $ if p == Initial then progress else handleFreeRoads p
   when (done && p == Special MovingRobber && movedRobber) backToNormal
@@ -116,26 +115,34 @@ isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 isValid action' = do
   current <- get
   let predicates' = preconditions action'
-  let validAct = all ($ current) predicates'
+  let validAct = checkAllUnsafe predicates' current
   return validAct
 
+
 -- | Creates a predicate that is true when a game is in one of the specified phases.
-phaseOneOf :: [Phase] -> Game -> Bool
-phaseOneOf phases = flip elem phases . view phase
+phaseOneOf :: [Phase] -> Precondition Game
+phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, label = "phase one of: " ++ (show phases) } 
 
 -- | Creates a predicate that checks if a player has an item
-hasItem :: Item -> PlayerIndex -> Game -> Bool
-hasItem itemToFind pI = elem itemToFind . playerItems
-  where playerItems = view (players.ix (fromPlayerIndex pI).constructed)
+hasItem :: Item -> PlayerIndex -> Precondition Game
+hasItem itemToFind pI = Precondition { predicate = hasIt, label = show pI ++ " has a " ++ show itemToFind }
+  where hasIt = elem itemToFind . playerItems
+        playerItems = view (players.ix (fromPlayerIndex pI).constructed)
 
 -- | Creates a predicate that checks if a player has enough resources for something.
-hasResourcesFor :: ResourceCount -> PlayerIndex -> Game -> Bool
-hasResourcesFor cost' pI = flip sufficient cost' . playerResources
-  where playerResources = view (players.ix (fromPlayerIndex pI).resources)
+hasResourcesFor :: ResourceCount -> PlayerIndex -> Precondition Game
+hasResourcesFor cost' pI = Precondition { predicate = enough, label = show pI ++ " has enough for " ++ show cost' }
+  where enough = flip sufficient cost' . playerResources
+        playerResources = view (players.ix (fromPlayerIndex pI).resources)
 
 -- | Creates a predicate that checks if a player has enough resources for an item.
-hasResourcesForItem :: Item -> PlayerIndex -> Game -> Bool
+hasResourcesForItem :: Item -> PlayerIndex -> Precondition Game
 hasResourcesForItem itemToBuy = hasResourcesFor (cost itemToBuy)
+
+
+offerOriginatedWith :: TradeOffer -> PlayerIndex -> Precondition Game
+offerOriginatedWith offer' playerIndex'
+  = Precondition (\_ -> offer'^.offeredBy == playerIndex') ("offer originated by " ++ show playerIndex')
 
 getPlayer :: (RandomGen g) => PlayerIndex -> GameStateReturning g Player
 getPlayer pI = do
@@ -152,16 +159,15 @@ scores = do
   ps <- use players
   return $ map (view score) ps
 
-turnIs :: PlayerIndex -> Game -> Bool
-turnIs playerIndex' = (== playerIndex') . view currentPlayer
+turnIs :: PlayerIndex -> Precondition Game
+turnIs playerIndex' = Precondition {predicate = (== playerIndex') . view currentPlayer, label = "it's " ++ show playerIndex' ++ "'s turn"}
 
 -- | Returns a series of predicates that must be true for an action to proceed.
-preconditions :: GameAction -> [Game -> Bool]
+preconditions :: GameAction -> [Precondition Game]
 preconditions (PlayerAction playerIndex' action')
   = case action' of
       Roll -> [ phaseOneOf [Normal]
-              , turnIs playerIndex'
-              , \g -> view currentPlayer g == playerIndex']
+              , turnIs playerIndex']
       BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)], turnIs playerIndex']
       SpecialAction x -> case x of
         M _ -> [phaseOneOf [Special Monopolizing], turnIs playerIndex']
@@ -170,28 +176,28 @@ preconditions (PlayerAction playerIndex' action')
       PlayCard x -> [ phaseOneOf [Normal]
                     , hasItem (Card x) playerIndex'
                     , turnIs playerIndex'
-                    , \_ -> x /= VictoryPoint] -- can't play a victory point
+                    , Precondition( \_ -> x /= VictoryPoint) "VP is unplayable"]
       Purchase x -> [ phaseOneOf [Normal]
                     , turnIs playerIndex'
                     , hasResourcesForItem x playerIndex'
-                    , \g -> let construct' = x ^? building
-                                maybeValid = do
-                                  c <- construct'
-                                  return $ validConstruct c (g ^. board)
-                            in  maybeValid == Just True || isNothing maybeValid ]
+                    , Precondition (\g -> let construct' = x ^? building
+                                              maybeValid = do
+                                                c <- construct'
+                                                return $ validConstruct c (g ^. board)
+                                          in  maybeValid == Just True || isNothing maybeValid) (show x ++ " is valid on board") ]
       Trade x -> case x of
         Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
         Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
         Reject {} -> [phaseOneOf [Normal]]
         CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
-                                               , \_ -> offer'^.offeredBy == playerIndex'
+                                               , offerOriginatedWith offer' playerIndex'
                                                , hasResourcesFor (offer'^.offering) playerIndex'
                                                , hasResourcesFor (offer'^.asking) accepterIndex'
                                                , turnIs playerIndex']
-        CancelTrade offer' -> [phaseOneOf [Normal], \_ -> offer'^.offeredBy == playerIndex', turnIs playerIndex']
+        CancelTrade offer' -> [phaseOneOf [Normal], offerOriginatedWith offer' playerIndex', turnIs playerIndex']
         Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
       Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
-                                     , \_ -> totalResources r == i ]
+                                     , Precondition (\_ -> totalResources r == i) (show action' ++ "satisfies minimum " ++ show i)]
       EndTurn -> [phaseOneOf [Normal], turnIs playerIndex']
 
 doAction :: (RandomGen g) => GameAction -> GameState g
