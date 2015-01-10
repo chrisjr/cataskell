@@ -9,6 +9,7 @@ import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Control.Applicative ((<$>), (<*>))
+import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe (fromJust, isJust, isNothing, mapMaybe, listToMaybe)
 import Data.List (find, findIndex, elemIndex, nub, (\\))
@@ -115,9 +116,8 @@ isValid :: (RandomGen g) => GameAction -> GameStateReturning g Bool
 isValid action' = do
   current <- get
   let predicates' = preconditions action'
-  let validAct = checkAllUnsafe predicates' current
+  let validAct = isRight $ checkAll predicates' current
   return validAct
-
 
 -- | Creates a predicate that is true when a game is in one of the specified phases.
 phaseOneOf :: [Phase] -> Precondition Game
@@ -139,7 +139,7 @@ hasResourcesFor cost' pI = Precondition { predicate = enough, label = show pI ++
 hasResourcesForItem :: Item -> PlayerIndex -> Precondition Game
 hasResourcesForItem itemToBuy = hasResourcesFor (cost itemToBuy)
 
-
+-- | Check that an offer originated with the ourrent player
 offerOriginatedWith :: TradeOffer -> PlayerIndex -> Precondition Game
 offerOriginatedWith offer' playerIndex'
   = Precondition (\_ -> offer'^.offeredBy == playerIndex') ("offer originated by " ++ show playerIndex')
