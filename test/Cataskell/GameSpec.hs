@@ -120,17 +120,18 @@ spec = do
       \game -> let res' = evalGame (use players >>= mapM (return . view resources)) game (mkStdGen 0)
                in  all nonNegative res'
     it "should deduct resources when a valid purchase is made" $ property $
-      \ng pI c' -> 
-       let bldg = Building (c' :: Construct)
-           game = fromNormalGame ng
-           purchase' = purchase (pI :: PlayerIndex) bldg
-           stdGen = mkStdGen 0
-       in evalGame (isValid purchase') game stdGen ==>
+      \ng pI -> 
+       let game = fromNormalGame ng
+           purchase' = find (isJust . preview (action.item.building)) (game ^. validActions)
+           bldg = purchase' >>= preview (action.item.building)
+       in isJust bldg ==>
          let i = fromPlayerIndex pI
              oldRes = game ^. players . ix i . resources
-             (g', _) = runGame (update purchase') game (mkStdGen 0)
+             purchase'' = fromJust purchase'
+             bldg' = fromJust bldg
+             (g', _) = runGame (update purchase'') game (mkStdGen 0)
              newRes = g' ^. players . ix i . resources
-         in newRes == oldRes <> mkNeg (cost bldg)
+         in newRes == oldRes <> mkNeg (cost (Building bldg'))
 
   describe "GameStateReturning functions" $ do
     let game = head randomGames
