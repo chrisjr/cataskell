@@ -40,6 +40,7 @@ library
                      Cataskell.GameData.Basics
                      Cataskell.GameData.Location
                      Cataskell.GameData.Player
+                     Cataskell.GameData.Preconditions
                      Cataskell.GameData.Resources
                      Cataskell.Serialize
                      Cataskell.SerializeOpts
