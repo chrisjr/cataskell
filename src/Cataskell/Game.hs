@@ -8,10 +8,10 @@ import Control.Monad.State
 import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>), (<*>), pure)
 import Data.Either
 import Data.Monoid (mempty, (<>))
-import Data.Maybe (fromJust, isJust, isNothing, mapMaybe, listToMaybe)
+import Data.Maybe (fromJust, isJust, isNothing, catMaybes, mapMaybe, listToMaybe)
 import Data.List (find, findIndex, elemIndex, nub, (\\))
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -138,6 +138,18 @@ hasResourcesFor cost' pI = Precondition { predicate = enough, label = show pI ++
 -- | Creates a predicate that checks if a player has enough resources for an item.
 hasResourcesForItem :: Item -> PlayerIndex -> Precondition Game
 hasResourcesForItem itemToBuy = hasResourcesFor (cost itemToBuy)
+
+checkM :: Precondition Game -> GameStateReturning g Bool
+checkM p = do
+  let pred' = predicate p
+  fmap pred' get
+
+checkResourcesForCompleteTrade :: TradeOffer -> PlayerIndex -> GameStateReturning g Bool
+checkResourcesForCompleteTrade offer' accepter' = do
+  let offerer' = offer'^.offeredBy
+  offeringValid <- checkM $ hasResourcesFor (offer'^.offering) offerer'
+  askingValid <- checkM $ hasResourcesFor (offer'^.asking) accepter'
+  return $ offeringValid && askingValid
 
 -- | Check that an offer originated with the ourrent player
 offerOriginatedWith :: TradeOffer -> PlayerIndex -> Precondition Game
@@ -431,28 +443,75 @@ simpleOffers playerIndex' = do
   let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> singles
   return offers
 
-possibleTradeActions :: (RandomGen g) => GameStateReturning g [GameAction]
-possibleTradeActions = do
+canReplyToTrade :: (RandomGen g) => GameStateReturning g (GameAction -> Bool)
+canReplyToTrade = do
   openTrades' <- use openTrades
-  playerIndex' <- use currentPlayer
-  base <- simpleOffers playerIndex'
-  let offer' = listToMaybe $ mapMaybe toOffer openTrades'
+  let existingAccepts = filter isAccept openTrades'
+  let existingRejects = filter isReject openTrades'
+  let alreadyReplied = mapMaybe (^? rejecter) existingRejects ++ mapMaybe (^? accepter) existingAccepts
+  return $ \a -> (a^.actor) `notElem` alreadyReplied
+
+openOffer :: (RandomGen g) => GameStateReturning g (Maybe TradeOffer)
+openOffer = do
+  openTrades' <- use openTrades
+  return $ listToMaybe $ mapMaybe toOffer openTrades'
+
+extantAccepts :: (RandomGen g) => GameStateReturning g [TradeAction]
+extantAccepts = do
+  openTrades' <- use openTrades
+  return $ filter isAccept openTrades'
+
+possibleAccepts :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleAccepts = do
+  offer' <- openOffer
+  canReply <- canReplyToTrade
   if isJust offer'
   then do
     let offer'' = fromJust offer'
-    let existingAccepts = filter isAccept openTrades'
-    let existingRejects = filter isReject openTrades'
-    let alreadyReplied = mapMaybe (^? rejecter) existingRejects ++ mapMaybe (^? accepter) existingAccepts
-    let canReply a = (a^.actor) `notElem` alreadyReplied
     acceptances <- mkAccept offer''
-    others <- otherPlayers
-    let otherIs = map (view playerIndex) others
-    let rejects = map (reject offer'' Nothing) otherIs
-    let acceptances' = filter canReply acceptances
-    let rejects' = filter canReply rejects
-    let completes = mapMaybe complete existingAccepts
+    return $ filter canReply acceptances
+  else return []
+
+possibleRejects :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleRejects = do
+  offer' <- openOffer
+  canReply <- canReplyToTrade
+  otherIs <- (otherPlayers >>= mapM (return . view playerIndex))
+  let rejects = fmap (\x -> map (reject x Nothing) otherIs) offer'
+  return $ maybe [] (filter canReply) rejects
+
+originatedWith :: TradeOffer -> PlayerIndex -> Bool
+originatedWith offer' playerIndex' = (offer'^.offeredBy) == playerIndex'
+
+possibleCompletes :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleCompletes = do
+  offer' <- openOffer
+  if isJust offer'
+  then do
+    let offer'' = fromJust offer'
+    currentPlayer' <- use currentPlayer
+    extantAccepts' <- extantAccepts
+    let canReply = originatedWith offer'' currentPlayer'
+    completes' <- forM extantAccepts' $ \x -> do
+      let accepter' = x ^?! accepter
+      enoughResources <- checkResourcesForCompleteTrade offer'' accepter'
+      return $ if enoughResources && canReply then complete x else Nothing
+    return $ catMaybes completes'
+  else return []
+
+possibleTradeActions :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleTradeActions = do
+  playerIndex' <- use currentPlayer
+  base <- simpleOffers playerIndex'
+  offer' <- openOffer
+  if isJust offer'
+  then do
+    let offer'' = fromJust offer'
+    accepts' <- possibleAccepts
+    rejects' <- possibleRejects
+    completes' <- possibleCompletes
     let cancels = if (offer''^.offeredBy == playerIndex') then [cancel offer''] else []
-    assert (null existingAccepts || not (null completes)) return $ acceptances' ++ rejects' ++ cancels ++ completes
+    return $ accepts' ++ rejects' ++ completes' ++ cancels
   else return base
 
 otherPlayers :: (RandomGen g) => GameStateReturning g [Player]

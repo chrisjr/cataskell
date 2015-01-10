@@ -154,6 +154,18 @@ spec = do
                    pI = view currentPlayer g
                in  and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
 
+    context "possibleAccepts" $ do
+      it "should generate accepts when an offer is present" $ property $ 
+        \ng -> let g = fromNormalGame ng
+                   offer' = find (\x -> isJust (preview (action.trade) x >>= toOffer)) (g^.validActions)
+                   f x = let ask' = x^?! action.trade.offer.asking
+                         in find (\p -> sufficient (p^.resources) ask') (g^.players)
+                   hasEnough = fmap f offer'
+               in isJust offer' && isJust hasEnough ==> let offer'' = fromJust offer'
+                                                            stdGen = mkStdGen 0
+                                                            (g', _) = runGame (update offer'') g stdGen
+                                                            accepts' = evalGame possibleAccepts g' stdGen
+                                                        in not $ null accepts'
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)
