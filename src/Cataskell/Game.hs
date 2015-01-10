@@ -11,7 +11,7 @@ import qualified Data.Map.Strict as Map
 import Control.Applicative ((<$>), (<*>))
 import Data.Monoid (mempty, (<>))
 import Data.Maybe (fromJust, isJust, isNothing, mapMaybe, listToMaybe)
-import Data.List (find, findIndex, elemIndex, nub)
+import Data.List (find, findIndex, elemIndex, nub, (\\))
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -329,8 +329,16 @@ getHarbors playerIndex' = do
   return $ map harborDiscount myHarbors
 
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
-doDiscard playerIndex' (DiscardAction _ r)
-  = players . ix (fromPlayerIndex playerIndex') . resources <>= mkNeg r
+doDiscard playerIndex' (DiscardAction _ r) = do 
+  players . ix (fromPlayerIndex playerIndex') . resources <>= mkNeg r
+  vA <- use validActions
+  let vA' = vA \\ [mkDiscard (playerIndex', r)]
+  validActions .= vA'
+  when (null vA') $ do
+   pI <- use currentPlayer
+   toSpecialPhase MovingRobber pI
+
+
 
 doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card'
