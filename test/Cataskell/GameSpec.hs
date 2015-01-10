@@ -75,6 +75,7 @@ instance Arbitrary Game where
 
 instance Arbitrary NormalGame where
   arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
+  shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -114,16 +115,17 @@ spec = do
                    highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores'
                in  (fst highestCount < 10) || (snd highestCount == 1)
     it "should deduct resources when a valid purchase is made" $ property $
-      \game pI c' -> 
-        let bldg = Building (c' :: Construct)
-            purchase' = purchase (pI :: PlayerIndex) bldg
-            stdGen = mkStdGen 0
-        in evalGame (isValid purchase') game stdGen ==>
-          let i = fromPlayerIndex pI
-              oldRes = game ^. players . ix i . resources
-              (g', _) = runGame (update purchase') game (mkStdGen 0)
-              newRes = g' ^. players . ix i . resources
-          in newRes == (oldRes <> (mkNeg $ cost bldg))
+      \ng pI c' -> 
+       let bldg = Building (c' :: Construct)
+           game = fromNormalGame ng
+           purchase' = purchase (pI :: PlayerIndex) bldg
+           stdGen = mkStdGen 0
+       in evalGame (isValid purchase') game stdGen ==>
+         let i = fromPlayerIndex pI
+             oldRes = game ^. players . ix i . resources
+             (g', _) = runGame (update purchase') game (mkStdGen 0)
+             newRes = g' ^. players . ix i . resources
+         in newRes == oldRes <> mkNeg (cost bldg)
 
   describe "GameStateReturning functions" $ do
     let game = head randomGames
