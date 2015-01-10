@@ -67,7 +67,7 @@ executable cataskell-cli
   hs-source-dirs:    cataskell-cli
   default-language:  Haskell2010
 
-test-suite tests
+test-suite test
   type:               exitcode-stdio-1.0
   hs-source-dirs:     test
   main-is:            Spec.hs
