@@ -157,15 +157,16 @@ spec = do
     context "possibleAccepts" $ do
       it "should generate accepts when an offer is present" $ property $ 
         \ng -> let g = fromNormalGame ng
-                   offer' = find (\x -> isJust (preview (action.trade) x >>= toOffer)) (g^.validActions)
-                   f x = let ask' = x^?! action.trade.offer.asking
-                         in find (\p -> sufficient (p^.resources) ask') (g^.players)
+                   openTrades' = g^.openTrades
+                   offer' = find (isJust . preview offer) openTrades'
+                   accepts' = filter isAccept openTrades'
+                   f x = let ask' = x^?! offer.asking
+                             asker' = x^?! offer.offeredBy
+                         in find (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
                    hasEnough = fmap f offer'
-               in isJust offer' && isJust hasEnough ==> let offer'' = fromJust offer'
-                                                            stdGen = mkStdGen 0
-                                                            (g', _) = runGame (update offer'') g stdGen
-                                                            accepts' = evalGame possibleAccepts g' stdGen
-                                                        in not $ null accepts'
+               in null accepts' && isJust offer' && isJust hasEnough ==> let stdGen = mkStdGen 0
+                                                                             accepts'' = evalGame possibleAccepts g stdGen
+                                                                         in not $ null accepts''
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)

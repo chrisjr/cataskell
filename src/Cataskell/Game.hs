@@ -123,6 +123,27 @@ isValid action' = do
 phaseOneOf :: [Phase] -> Precondition Game
 phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, label = "phase one of: " ++ (show phases) } 
 
+playersExist' :: [PlayerIndex] -> Game -> Bool
+playersExist' pIs g = all (flip elem $ map (^.playerIndex) (g^.players)) pIs
+
+playersReferenced :: GameAction -> [PlayerIndex]
+playersReferenced (PlayerAction actor' act') = nub $ actor':fromAct
+  where fromAct = case act' of
+                    Trade x -> case x of
+                                 Offer offer' -> [offer'^.offeredBy]
+                                 Accept offer' accepter' -> [offer'^.offeredBy, accepter']
+                                 Reject offer' rejecter' _ -> [offer'^.offeredBy, rejecter']
+                                 CompleteTrade offer' accepter' -> [offer'^.offeredBy, accepter']
+                                 CancelTrade offer' -> [offer'^.offeredBy]
+                                 Exchange offer' -> [offer'^.offeredBy]
+                    _ -> []
+
+playersExistFor' :: GameAction -> Game -> Bool
+playersExistFor' = playersExist' . playersReferenced
+
+playersExistFor :: GameAction -> Precondition Game
+playersExistFor a = Precondition { predicate = playersExistFor' a, label = "All players referenced by " ++ show a }
+
 -- | Creates a predicate that checks if a player has an item
 hasItem :: Item -> PlayerIndex -> Precondition Game
 hasItem itemToFind pI = Precondition { predicate = hasIt, label = show pI ++ " has a " ++ show itemToFind }
@@ -176,41 +197,42 @@ turnIs playerIndex' = Precondition {predicate = (== playerIndex') . view current
 
 -- | Returns a series of predicates that must be true for an action to proceed.
 preconditions :: GameAction -> [Precondition Game]
-preconditions (PlayerAction playerIndex' action')
-  = case action' of
-      Roll -> [ phaseOneOf [Normal]
-              , turnIs playerIndex']
-      BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)], turnIs playerIndex']
-      SpecialAction x -> case x of
-        M _ -> [phaseOneOf [Special Monopolizing], turnIs playerIndex']
-        I _ -> [phaseOneOf [Special Inventing], turnIs playerIndex']
-        R _ -> [phaseOneOf [Special MovingRobber], turnIs playerIndex']
-      PlayCard x -> [ phaseOneOf [Normal]
-                    , hasItem (Card x) playerIndex'
-                    , turnIs playerIndex'
-                    , Precondition( \_ -> x /= VictoryPoint) "VP is unplayable"]
-      Purchase x -> [ phaseOneOf [Normal]
-                    , turnIs playerIndex'
-                    , hasResourcesForItem x playerIndex'
-                    , Precondition (\g -> let construct' = x ^? building
-                                              maybeValid = do
-                                                c <- construct'
-                                                return $ validConstruct c (g ^. board)
-                                          in  maybeValid == Just True || isNothing maybeValid) (show x ++ " is valid on board") ]
-      Trade x -> case x of
-        Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
-        Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
-        Reject {} -> [phaseOneOf [Normal]]
-        CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
-                                               , offerOriginatedWith offer' playerIndex'
-                                               , hasResourcesFor (offer'^.offering) playerIndex'
-                                               , hasResourcesFor (offer'^.asking) accepterIndex'
-                                               , turnIs playerIndex']
-        CancelTrade offer' -> [phaseOneOf [Normal], offerOriginatedWith offer' playerIndex', turnIs playerIndex']
-        Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
-      Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
-                                     , Precondition (\_ -> totalResources r == i) (show action' ++ "satisfies minimum " ++ show i)]
-      EndTurn -> [phaseOneOf [Normal], turnIs playerIndex']
+preconditions a@(PlayerAction playerIndex' action') = playersExistFor a : reqs
+  where reqs = case action' of
+                 Roll -> [ phaseOneOf [Normal]
+                         , turnIs playerIndex'
+                         ]
+                 BuildForFree _ -> [phaseOneOf [Initial, Special (FreeRoads 2), Special (FreeRoads 1)], turnIs playerIndex']
+                 SpecialAction x -> case x of
+                   M _ -> [phaseOneOf [Special Monopolizing], turnIs playerIndex']
+                   I _ -> [phaseOneOf [Special Inventing], turnIs playerIndex']
+                   R _ -> [phaseOneOf [Special MovingRobber], turnIs playerIndex']
+                 PlayCard x -> [ phaseOneOf [Normal]
+                               , hasItem (Card x) playerIndex'
+                               , turnIs playerIndex'
+                               , Precondition( \_ -> x /= VictoryPoint) "VP is unplayable"]
+                 Purchase x -> [ phaseOneOf [Normal]
+                               , turnIs playerIndex'
+                               , hasResourcesForItem x playerIndex'
+                               , Precondition (\g -> let construct' = x ^? building
+                                                         maybeValid = do
+                                                           c <- construct'
+                                                           return $ validConstruct c (g ^. board)
+                                                     in  maybeValid == Just True || isNothing maybeValid) (show x ++ " is valid on board") ]
+                 Trade x -> case x of
+                   Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
+                   Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
+                   Reject {} -> [phaseOneOf [Normal]]
+                   CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
+                                                          , offerOriginatedWith offer' playerIndex'
+                                                          , hasResourcesFor (offer'^.offering) playerIndex'
+                                                          , hasResourcesFor (offer'^.asking) accepterIndex'
+                                                          , turnIs playerIndex']
+                   CancelTrade offer' -> [phaseOneOf [Normal], offerOriginatedWith offer' playerIndex', turnIs playerIndex']
+                   Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
+                 Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
+                                                , Precondition (\_ -> totalResources r == i) (show action' ++ "satisfies minimum " ++ show i)]
+                 EndTurn -> [phaseOneOf [Normal], turnIs playerIndex']
 
 doAction :: (RandomGen g) => GameAction -> GameState g
 doAction act'
