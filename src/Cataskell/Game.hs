@@ -46,7 +46,7 @@ data Game = Game
   , _validActions :: [GameAction]
   , _openTrades :: [TradeAction]
   , _lastAction :: Maybe (GameAction, Bool)
-  , _allCards :: [Item]
+  , _allCards :: [DevelopmentCard]
   , _winner :: Maybe PlayerIndex
   } deriving (Eq, Ord, Show, Read, Generic)
 
@@ -218,6 +218,7 @@ doAction act'
           Discard x -> doDiscard actorIndex x
           PlayCard x -> doPlayCard actorIndex x
           EndTurn -> do
+            transferCards actorIndex
             scoreIsNow <- scoreFor actorIndex
             if scoreIsNow >= 10
             then wonBy actorIndex
@@ -281,8 +282,15 @@ getCard :: (RandomGen g) => PlayerIndex -> GameState g
 getCard playerIndex' = do
   allCards' <- use allCards
   let (cardTop, restOfCards) = splitAt 1 allCards'
-  players . ix (fromPlayerIndex playerIndex') . constructed <>= cardTop
+  players . ix (fromPlayerIndex playerIndex') . newCards <>= cardTop
   allCards .= restOfCards
+
+transferCards :: (RandomGen g) => PlayerIndex -> GameState g
+transferCards playerIndex' = do
+  let i = fromPlayerIndex playerIndex'
+  cards' <- use (players . ix i . newCards)
+  players . ix i . constructed <>= map Card cards'
+  players . ix i . newCards .= []
 
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade playerIndex' tradeAction'

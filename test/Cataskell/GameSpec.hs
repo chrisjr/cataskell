@@ -191,6 +191,21 @@ spec = do
                    r' = mkStdGen 0
                    ptas = evalGame possibleTradeActions g r'
                in  all (\x -> evalGame (isValid x) g r') ptas
+    context "getCard" $ do
+      it "should add a card to a player's newCards field" $ property $
+        \ng -> let g = fromNormalGame ng
+                   cardIs = views allCards head g
+                   c' = Card cardIs
+                   pI = view currentPlayer g
+                   i = fromPlayerIndex pI
+                   hasNewCard x = cardIs `elem` view (players . ix i . newCards) x
+                   hasCard x = c' `elem` view (players . ix i . constructed) x
+                   vA = view validActions g
+                   endTurn = find ((== EndTurn) . view action) vA
+                   f x = let g' = fst $ runGame (update x) g (mkStdGen 0)
+                         in not (hasNewCard g') && hasCard g'
+                   doesntKeep = maybe True f endTurn
+               in not (hasNewCard g) && doesntKeep
     context "makeDiscards" $ do
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }

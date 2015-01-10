@@ -130,13 +130,13 @@ initialItems = settlements ++ cities ++ roads
         cities = replicate 4 (Potential (H City))
         roads = replicate 15 (Potential Road)
 
-allDevelopmentCards :: [Item]
+allDevelopmentCards :: [DevelopmentCard]
 allDevelopmentCards = knights ++ vps ++ roadBuilds ++ inventions ++ monopolies
-  where knights = replicate 14 (Card Knight)
-        vps = replicate 5 (Card VictoryPoint)
-        roadBuilds = replicate 2 (Card RoadBuilding)
-        inventions = replicate 2 (Card Invention)
-        monopolies = replicate 2 (Card Monopoly)
+  where knights = replicate 14 Knight
+        vps = replicate 5 VictoryPoint
+        roadBuilds = replicate 2 RoadBuilding
+        inventions = replicate 2 Invention
+        monopolies = replicate 2 Monopoly
 
 instance Valuable Bonus where
   pointValue _ = 2

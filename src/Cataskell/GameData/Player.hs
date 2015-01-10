@@ -10,6 +10,7 @@ module Cataskell.GameData.Player
 , playerIndex
 , resources
 , constructed
+, newCards
 , bonuses
 , mkPlayer
 , mkPlayers
@@ -31,7 +32,7 @@ newtype PlayerIndex = PlayerIndex Int
 
 toPlayerIndex :: Int -> PlayerIndex
 toPlayerIndex i | i <= 3 = PlayerIndex i
-                | otherwise = error $ (show i) ++ " out of bounds"
+                | otherwise = error $ show i ++ " out of bounds"
 
 fromPlayerIndex :: PlayerIndex -> Int
 fromPlayerIndex x = case x of
@@ -43,6 +44,7 @@ data Player = Player
   , _playerIndex :: PlayerIndex
   , _resources :: ResourceCount
   , _constructed :: [Item]
+  , _newCards :: [DevelopmentCard]
   , _bonuses :: [Bonus]
   } deriving (Eq, Ord, Show, Read, Generic)
 
@@ -58,6 +60,7 @@ mkPlayer (i, c, n) = Player
   , _playerIndex = toPlayerIndex i
   , _resources = mempty
   , _constructed = initialItems
+  , _newCards = []
   , _bonuses = []
   }
 
@@ -67,7 +70,7 @@ mkPlayers = map mkPlayer . zip3 [0..] [Red, Blue, Orange, White]
 validPlayer :: Player -> Bool
 validPlayer p
   = let resourcesNonNegative = views resources nonNegative p
-        bldgs = catMaybes . map (preview building) $ (p ^. constructed)
+        bldgs = mapMaybe (preview building) (p ^. constructed)
         allBuildingsColoredRight = all (== color p) . map color $ bldgs
     in resourcesNonNegative && allBuildingsColoredRight
 
@@ -78,7 +81,7 @@ displayScore :: Getter Player Int
 displayScore = to displayScore'
   where displayScore' p = regularPoints p + bonusPoints p
         regularPoints p = totalPointsOf . filter (not . isVictoryPoint) $ p ^. constructed
-        bonusPoints   p = views bonuses totalPointsOf p
+        bonusPoints = views bonuses totalPointsOf
 
 score :: Getter Player Int
 score = to score'
