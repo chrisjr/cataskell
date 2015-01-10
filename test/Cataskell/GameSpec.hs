@@ -61,18 +61,19 @@ randomGames = evalRand mkGames (mkStdGen 0)
 
 instance Arbitrary Game where
   arbitrary = elements randomGames
-  shrink f = tail $ Game <$> [_phase f]
-                    <*> shrink' (_board f)
-                    <*> shrink' (_players f)
-                    <*> shrink' (_currentPlayer f)
-                    <*> shrink' (_turnAdvanceBy f)
-                    <*> shrink' (_rolled f)
-                    <*> shrink' (_validActions f)
-                    <*> shrink' (_openTrades f)
-                    <*> shrink' (_lastAction f)
-                    <*> shrink' (_allCards f)
-                    <*> shrink' (_winner f)
+  shrink g = tail $ Game <$> [_phase g]
+                    <*> shrink' (_board g)
+                    <*> shrink' (_players g)
+                    <*> shrink' (_currentPlayer g)
+                    <*> shrink' (_turnAdvanceBy g)
+                    <*> shrink' (_rolled g)
+                    <*> shrink' (_validActions g)
+                    <*> shrink' (_openTrades g)
+                    <*> shrink' (_lastAction g)
+                    <*> shrink' (_allCards g)
+                    <*> shrink' (_winner g)
     where shrink' a = a : shrink a
+
 
 instance Arbitrary NormalGame where
   arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
