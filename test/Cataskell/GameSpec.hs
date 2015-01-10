@@ -15,6 +15,7 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust, isJust, mapMaybe)
 import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
+import Control.Arrow ((&&&))
 import Control.Lens hiding (elements)
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 import Cataskell.GameData.ActionsSpec()
@@ -112,8 +113,11 @@ spec = do
                       in all isValid' vA
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores' = evalGame scores game (mkStdGen 0)
-                   highestCount = last . map (\xs -> (head xs, length xs)) . group $ sort scores'
+                   highestCount = last . map (head &&& length) . group $ sort scores'
                in  (fst highestCount < 10) || (snd highestCount == 1)
+    it "should have only non-negative resource counts" $ property $
+      \game -> let res' = evalGame (use players >>= mapM (return . view resources)) game (mkStdGen 0)
+               in  all nonNegative res'
     it "should deduct resources when a valid purchase is made" $ property $
       \ng pI c' -> 
        let bldg = Building (c' :: Construct)

@@ -139,8 +139,8 @@ hasResourcesForItem itemToBuy = hasResourcesFor (cost itemToBuy)
 
 getPlayer :: (RandomGen g) => PlayerIndex -> GameStateReturning g Player
 getPlayer pI = do
-  current <- get
-  return $ current ^?! players . ix (fromPlayerIndex pI)
+  p <- preuse (players . ix (fromPlayerIndex pI))
+  maybe (error (show pI ++ " does not exist")) return p
 
 scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g Int
 scoreFor pI = do
@@ -337,8 +337,6 @@ doDiscard playerIndex' (DiscardAction _ r) = do
   when (null vA') $ do
    pI <- use currentPlayer
    toSpecialPhase MovingRobber pI
-
-
 
 doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card'
