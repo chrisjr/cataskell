@@ -160,6 +160,8 @@ spec = do
                       vr = validRoadsFor (c :: Color) board
                       vr' = map (^?! onEdge.edge) vr
                   in  not $ any (`elem` rm') vr'
+    it "should prohibit building further when an enemy settlement blocks the path" $ do
+      pending
   describe "validSettlementsFor" $ do
     it "should never include an existing settlement among valid options" $ property $
       \board c -> let sm' = Map.keys $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
