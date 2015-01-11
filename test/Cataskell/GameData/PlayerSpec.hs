@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Cataskell.GameData.PlayerSpec (main, spec) where
 
 import Test.Hspec
@@ -8,6 +10,7 @@ import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 import Control.Applicative ((<$>), (<*>))
 import Data.Maybe (isNothing)
+import qualified Data.Map.Strict as Map
 import Control.Lens hiding (elements)
 import Control.Exception (assert)
 
@@ -33,6 +36,12 @@ instance Arbitrary Player where
 
 instance Arbitrary PlayerIndex where
   arbitrary = toPlayerIndex `fmap` elements [0..3]
+
+instance Arbitrary (Map.Map PlayerIndex Player) where
+  arbitrary = do
+    ps <- listOf arbitrary
+    return . Map.fromList $ zip (map (view playerIndex) ps) ps
+  shrink m = Map.fromList <$> shrink (Map.toList m)
 
 main :: IO ()
 main = hspec spec

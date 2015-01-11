@@ -7,6 +7,7 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
 import Data.Monoid (mempty)
 import Data.Maybe
+import qualified Data.Map.Strict as Map
 import Control.Lens
 import GHC.Generics (Generic)
 
@@ -47,8 +48,9 @@ mkPlayer (i, c, n) = Player
   , _bonuses = []
   }
 
-mkPlayers :: [String] -> [Player]
-mkPlayers = map mkPlayer . zip3 [0..] [Red, Blue, Orange, White]
+mkPlayers :: [String] -> Map.Map PlayerIndex Player
+mkPlayers names = let ps = map mkPlayer $ zip3 [0..] [Red, Blue, Orange, White] names
+                  in  Map.fromList $ zip (map (view playerIndex) ps) ps
 
 validPlayer :: Player -> Bool
 validPlayer p

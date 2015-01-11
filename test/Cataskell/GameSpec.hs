@@ -17,6 +17,7 @@ import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 import Control.Lens hiding (elements)
+import Cataskell.Util
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 import Cataskell.GameData.ActionsSpec()
 import Cataskell.GameData.BasicsSpec()
@@ -96,7 +97,7 @@ spec = do
     it "should start in the Initial phase" $ property $
       \g -> (view phase $ fromInitialGame (g :: InitialGame)) == Initial
     it "must have either 3 or 4 players" $ property $
-      \game -> let l = length $ view players $ fromInitialGame (game :: InitialGame)
+      \game -> let l = Map.size $ view players $ fromInitialGame (game :: InitialGame)
                in l == 3 || l == 4
     it "should allow for the retrieval of a specific player" $ property $
       \game stdGen -> let g' = fromInitialGame (game :: InitialGame)
@@ -118,8 +119,8 @@ spec = do
                    highestCount = last . map (head &&& length) . group $ sort scores'
                in  (fst highestCount < 10) || (snd highestCount == 1)
     it "should have only non-negative resource counts" $ property $
-      \game -> let res' = evalGame (use players >>= mapM (return . view resources)) game (mkStdGen 0)
-               in  all nonNegative res'
+      \game -> let res' = evalGame (use players >>= (return . Map.map (^.resources))) game (mkStdGen 0)
+               in  all nonNegative $ Map.elems res'
     it "should deduct resources when a valid purchase is made" $ property $
       \ng pI -> 
        let game = fromNormalGame ng
@@ -128,12 +129,11 @@ spec = do
            allExist = all (`playersExistFor'` game) vA
            bldg = purchase' >>= preview (action.item.building)
        in isJust bldg && allExist ==>
-         let i = fromPlayerIndex pI
-             oldRes = game ^. players . ix i . resources
+         let oldRes = game ^. players . ix pI . resources
              purchase'' = fromJust purchase'
              bldg' = fromJust bldg
              (g', _) = runGame (update purchase'') game (mkStdGen 0)
-             newRes = g' ^. players . ix i . resources
+             newRes = g' ^. players . ix pI . resources
          in newRes == oldRes <> mkNeg (cost (Building bldg'))
 
   describe "GameStateReturning functions" $ do
@@ -166,7 +166,7 @@ spec = do
                    accepts' = filter isAccept openTrades'
                    f x = let ask' = x^?! offer.asking
                              asker' = x^?! offer.offeredBy
-                         in find (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
+                         in findValueWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
                    hasEnough = fmap f offer'
                    oh = liftM2 (,) offer' (join hasEnough)
                    allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'^.playerIndex] g) oh
@@ -178,9 +178,9 @@ spec = do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)
       let complete' = fromJust $ complete $ accept'^?!action.trade
-      let setAll = [ set (players . ix 0 . resources) mempty { ore = 1 }
-                   , set (players . ix 1 . resources) mempty { wheat = 1 }
-                   , set (players . ix 2 . resources) mempty
+      let setAll = [ set (players . ix (toPlayerIndex 0) . resources) mempty { ore = 1 }
+                   , set (players . ix (toPlayerIndex 1) . resources) mempty { wheat = 1 }
+                   , set (players . ix (toPlayerIndex 2) . resources) mempty
                    , set openTrades [Offer offer']
                    ]
       let offerGame = (foldr (.) id setAll) game
@@ -220,9 +220,8 @@ spec = do
                    cardIs = views allCards head g
                    c' = Card cardIs
                    pI = view currentPlayer g
-                   i = fromPlayerIndex pI
-                   hasNewCard x = cardIs `elem` view (players . ix i . newCards) x
-                   hasCard x = c' `elem` view (players . ix i . constructed) x
+                   hasNewCard x = cardIs `elem` view (players . ix pI . newCards) x
+                   hasCard x = c' `elem` view (players . ix pI . constructed) x
                    vA = view validActions g
                    endTurn = find ((== EndTurn) . view action) vA
                    f x = let g' = fst $ runGame (update x) g (mkStdGen 0)
@@ -230,15 +229,18 @@ spec = do
                    doesntKeep = maybe True f endTurn
                in not (hasNewCard g) && doesntKeep
     context "makeDiscards" $ do
+      let p0 = toPlayerIndex 0
+      let p1 = toPlayerIndex 1
+      let p2 = toPlayerIndex 2
       it "should generate discards for players with >7 resources" $ do
-        let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
-                     , set (players . ix 1 . resources) mempty { lumber = 9 }
-                     , set (players . ix 2 . resources) mempty { brick = 3 }
+        let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
+                     , set (players . ix p1 . resources) mempty { lumber = 9 }
+                     , set (players . ix p2 . resources) mempty { brick = 3 }
                      ]
         let game' = (foldr (.) id setAll) game
         let discards = evalGame makeDiscards game' (mkStdGen 0)
-        discards `shouldBe` [ mkDiscard (toPlayerIndex 0, mempty { ore = 4 })
-                            , mkDiscard (toPlayerIndex 1, mempty { lumber = 4 })]
+        discards `shouldBe` [ mkDiscard (p0, mempty { ore = 4 })
+                            , mkDiscard (p1, mempty { lumber = 4 })]
 
   describe "An example game" $ do
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
@@ -263,27 +265,28 @@ spec = do
     -- produce some variants that will be used later
 
     let (rolledOnce, randRolled) = gs !! 17
+    let p0 = toPlayerIndex 0
 
-    let withRoadBuilding = (players . ix 0 . constructed) <>~ [Card RoadBuilding] $ rolledOnce
-    let withInvention = (players . ix 0 . constructed) <>~ [Card Invention] $ rolledOnce
-    let withMonopoly = (players . ix 0 . constructed) <>~ [Card Monopoly] $ rolledOnce
-    let withKnight = (players . ix 0 . constructed) <>~ [Card Knight] $ rolledOnce
+    let withRoadBuilding = (players . ix p0 . constructed) <>~ [Card RoadBuilding] $ rolledOnce
+    let withInvention = (players . ix p0 . constructed) <>~ [Card Invention] $ rolledOnce
+    let withMonopoly = (players . ix p0 . constructed) <>~ [Card Monopoly] $ rolledOnce
+    let withKnight = (players . ix p0 . constructed) <>~ [Card Knight] $ rolledOnce
     let rolled7 = rolled .~ Just 7 $ rolledOnce
 
     context "in Normal phase" $ do
       it "should start each turn with a roll" $ do
         let vA = view validActions normalGame
-        let p1 = views players head normalGame
-        vA `shouldBe` [rollFor (p1^.playerIndex)]
+        let p1 = views players (head . Map.keys) normalGame
+        vA `shouldBe` [rollFor (p1)]
         view turnAdvanceBy normalGame `shouldBe` 1
 
       it "should distribute resources once a roll happens" $ do
-        let totalAsOf g = sum . map (views resources totalResources) $ view players g
+        let totalAsOf g = sum . Map.elems . Map.map (views resources totalResources) $ view players g
         let (starting, _)  = gs !! 16
         totalAsOf rolledOnce `shouldSatisfy` (> (totalAsOf starting))
 
       it "should allow for building roads once resources are sufficient" $ do
-        let findWoodBrickPlayer g = findIndex (\p -> sufficient (p^.resources) (cost $ unbuilt road)) (g^.players)
+        let findWoodBrickPlayer g = findKeyWhere (\p -> sufficient (p^.resources) (cost $ unbuilt road)) (g^.players)
         let findSuitable (g, _) = isJust $ findWoodBrickPlayer g
         let (g', _) = fromJust $ find findSuitable gs
         let pI = fromJust $ findWoodBrickPlayer g'
@@ -298,9 +301,9 @@ spec = do
 
       context "when trading" $ do
         let playerWithOre g = let ps = view players g
-                              in view playerIndex `fmap` (find (\p -> (ore $ view resources p) >= 1) ps)
+                              in findKeyWhere (\p -> (ore $ view resources p) >= 1) ps
         let playerWithWheat g = let ps = view players g
-                                in view playerIndex `fmap` (find (\p -> (wheat $ view resources p) >= 1) ps)
+                                in findKeyWhere (\p -> (wheat $ view resources p) >= 1) ps
 
         let wellResourced g = let o = playerWithOre g
                                   w = playerWithWheat g
@@ -318,16 +321,15 @@ spec = do
         let pOffer' = mkOffer pI (mempty { ore = 1} ) (mempty { wheat = 1 } )
         let tradeOffer' = fromJust $ pOffer ^? action.trade.offer
 
-        let beforeTradeP1 = ((view players furtherAlong) !! (fromPlayerIndex pI))^.resources
+        let beforeTradeP1 = furtherAlong^.players.ix pI.resources
 
         let (g', r') = runGame (update pOffer') furtherAlong randRolled
-        let others = views players (filter ((/= pI) . view playerIndex)) g'
-        let otherIs = map (view playerIndex) others
+        let others = views players (Map.filterWithKey (\k _ -> k /= pI)) g'
+        let otherIs = Map.keys others
         let acceptancesAll = map (accept tradeOffer') otherIs
         let validAcceptance g accept' = let thisPI = accept'^?!action.trade.accepter
                                             res = accept'^?!action.trade.offer.asking
-                                            p = fromJust $ views players (find ((== thisPI) . view playerIndex)) g
-                                        in  sufficient (view resources p) res
+                                        in  sufficient (g^.players.ix thisPI.resources) res
         let acceptances = filter (validAcceptance g') acceptancesAll
         let rejections = map (reject tradeOffer' Nothing) otherIs
 
@@ -350,7 +352,7 @@ spec = do
         let acceptedOffer = Offer (acceptance'^.offer)
         let aPI = acceptance^?!actor
 
-        let beforeTradeP2 = ((view players furtherAlong) !! (fromPlayerIndex aPI))^.resources
+        let beforeTradeP2 = furtherAlong^.players.ix aPI.resources
         let complete' = fromJust $ complete acceptance'
 
         it "should let another player accept" $ do
@@ -361,8 +363,8 @@ spec = do
           vA `shouldSatisfy` elem complete'
 
         let (completed, _) = runGame (update complete') accepted randRolled
-        let afterTradeP1 = ((view players completed) !! (fromPlayerIndex pI))^.resources
-        let afterTradeP2 = ((view players completed) !! (fromPlayerIndex aPI))^.resources
+        let afterTradeP1 = completed^.players.ix pI.resources
+        let afterTradeP2 = completed^.players.ix aPI.resources
 
         it "should let the first player complete the trade" $ do
           view openTrades completed `shouldBe` []
@@ -391,16 +393,19 @@ spec = do
         view phase g' `shouldBe` Special Monopolizing
 
     context "in the Special phase" $ do
+      let p0 = toPlayerIndex 0
+      let p1 = toPlayerIndex 1
+      let p2 = toPlayerIndex 2
       context "RobberAttack" $ do
-        let setAll = [ set (players . ix 0 . resources) mempty { ore = 8 }
-                     , set (players . ix 1 . resources) mempty { wheat = 10 }
-                     , set (players . ix 2 . resources) mempty { brick = 7 }
+        let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
+                     , set (players . ix p1 . resources) mempty { wheat = 10 }
+                     , set (players . ix p2 . resources) mempty { brick = 7 }
                      , set rolled $ Just 7
                      ]
         let toRobGame = (foldr (.) id setAll) rolledOnce
         let (robbedGame, _) = runGame updateForRoll toRobGame randRolled
-        let disc1 = mkDiscard (toPlayerIndex 0, mempty { ore = 4 })
-        let disc2 = mkDiscard (toPlayerIndex 1, mempty { wheat = 5 })
+        let disc1 = mkDiscard (p0, mempty { ore = 4 })
+        let disc2 = mkDiscard (p1, mempty { wheat = 5 })
         it "should force any players with over 7 resources to discard half" $ do
           view phase robbedGame `shouldBe` Special RobberAttack
           let vA = view validActions robbedGame
@@ -418,7 +423,7 @@ spec = do
                      in any (>2) scores' ==>
                           let (g', _) = runGame (forceRoll 7) g randRolled 
                               psScores = zip (map toPlayerIndex [0..3]) scores'
-                              pColors = Map.fromList $ map (\p -> (p^.playerIndex, color p)) $ view players g'
+                              pColors = Map.map color $ view players g'
                               high = map fst $ filter ((>2) . snd) psScores
                               acceptableColors = mapMaybe (`Map.lookup` pColors) high
                               vA = view validActions g'
@@ -461,7 +466,7 @@ spec = do
       context "Inventing" $ do
         it "should allow the current player to obtain two resources of their choice" $ do
           let playerIndex' = (toPlayerIndex 0)
-          let resPre = view (players . ix 0 . resources) withInvention
+          let resPre = view (players . ix playerIndex' . resources) withInvention
           let lumberPre = lumber resPre
           let wheatPre = wheat resPre
           let playCard' = mkPlayCard playerIndex' Invention
@@ -471,7 +476,7 @@ spec = do
           let lumberWheatInvention = PlayerAction playerIndex' (SpecialAction (I (InventionOf mempty { lumber = 1, wheat = 1})))
           let (postLumberWheatInvention, _) = runGame (update lumberWheatInvention) g' randRolled
 
-          let resPost = view (players . ix 0 . resources) postLumberWheatInvention
+          let resPost = view (players . ix playerIndex' . resources) postLumberWheatInvention
           let lumberPost = lumber resPost
           let wheatPost = wheat resPost
           lumberPost `shouldSatisfy` (== lumberPre + 1)
@@ -487,7 +492,7 @@ spec = do
           let lumberMonopoly = PlayerAction playerIndex' (SpecialAction (M (MonopolyOn Lumber)))
           let (postMonopoly, _) = runGame (update lumberMonopoly) g' randRolled
 
-          let pRes = map (view resources) $ view players postMonopoly
+          let pRes = Map.elems . Map.map (view resources) $ postMonopoly^.players
           let totalLumber = sum $ map (lumber) pRes
           pRes `shouldSatisfy` (all (\r -> lumber r == 0 || lumber r == totalLumber))
     context "in End phase" $ do

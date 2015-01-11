@@ -12,7 +12,7 @@ import Control.Applicative ((<$>), (<*>))
 import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe (fromJust, isJust, isNothing, catMaybes, mapMaybe, listToMaybe)
-import Data.List (find, findIndex, elemIndex, nub, (\\))
+import Data.List (find, elemIndex, nub)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -20,6 +20,7 @@ import Cataskell.GameData.Location
 import Cataskell.GameData.Player
 import Cataskell.GameData.Preconditions
 import Cataskell.GameData.Resources
+import Cataskell.Util
 import Control.Lens
 import GHC.Generics (Generic)
 
@@ -41,7 +42,7 @@ data Phase = Initial | Normal | Special SpecialPhase | End
 data Game = Game
   { _phase :: Phase
   , _board :: Board
-  , _players :: [Player]
+  , _players :: Map.Map PlayerIndex Player
   , _currentPlayer :: PlayerIndex
   , _turnAdvanceBy :: Int
   , _rolled :: Maybe Int
@@ -67,7 +68,7 @@ newGame pNames = do
               , _currentPlayer = toPlayerIndex 0
               , _turnAdvanceBy = 1
               , _rolled = Nothing
-              , _validActions = possibleInitialSettlements (head ps) b
+              , _validActions = possibleInitialSettlements (head $ Map.elems ps) b
               , _openTrades = []
               , _lastAction = Nothing
               , _allCards = cards
@@ -81,8 +82,8 @@ evalGame stReturn game = evalRand (evalStateT stReturn game)
 
 findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
-  maybeI <- uses players $ findIndex ((== c) . color)
-  return $ toPlayerIndex $ fromJust maybeI
+  maybeI <- uses players $ findKeyWhere ((== c) . color)
+  return $ fromJust maybeI
 
 -- | Move from one game state to the next
 update :: (RandomGen g) => GameAction -> GameState g
@@ -124,7 +125,7 @@ phaseOneOf :: [Phase] -> Precondition Game
 phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, label = "phase one of: " ++ (show phases) } 
 
 playersExist' :: [PlayerIndex] -> Game -> Bool
-playersExist' pIs g = all (flip elem $ map (^.playerIndex) (g^.players)) pIs
+playersExist' pIs g = all (`Map.member` (g^.players)) pIs
 
 playersReferenced :: GameAction -> [PlayerIndex]
 playersReferenced (PlayerAction actor' act') = nub $ actor':fromAct
@@ -148,13 +149,13 @@ playersExistFor a = Precondition { predicate = playersExistFor' a, label = "All 
 hasItem :: Item -> PlayerIndex -> Precondition Game
 hasItem itemToFind pI = Precondition { predicate = hasIt, label = show pI ++ " has a " ++ show itemToFind }
   where hasIt = elem itemToFind . playerItems
-        playerItems = view (players.ix (fromPlayerIndex pI).constructed)
+        playerItems = view (players.ix pI.constructed)
 
 -- | Creates a predicate that checks if a player has enough resources for something.
 hasResourcesFor :: ResourceCount -> PlayerIndex -> Precondition Game
 hasResourcesFor cost' pI = Precondition { predicate = enough, label = show pI ++ " has enough for " ++ show cost' }
   where enough = flip sufficient cost' . playerResources
-        playerResources = view (players.ix (fromPlayerIndex pI).resources)
+        playerResources = view (players.ix pI.resources)
 
 -- | Creates a predicate that checks if a player has enough resources for an item.
 hasResourcesForItem :: Item -> PlayerIndex -> Precondition Game
@@ -179,7 +180,7 @@ offerOriginatedWith offer' playerIndex'
 
 getPlayer :: (RandomGen g) => PlayerIndex -> GameStateReturning g Player
 getPlayer pI = do
-  p <- preuse (players . ix (fromPlayerIndex pI))
+  p <- preuse (players . ix pI)
   maybe (error (show pI ++ " does not exist")) return p
 
 scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g Int
@@ -190,7 +191,7 @@ scoreFor pI = do
 scores :: (RandomGen g) => GameStateReturning g [Int]
 scores = do
   ps <- use players
-  return $ map (view score) ps
+  return . Map.elems $ Map.map (view score) ps
 
 turnIs :: PlayerIndex -> Precondition Game
 turnIs playerIndex' = Precondition {predicate = (== playerIndex') . view currentPlayer, label = "it's " ++ show playerIndex' ++ "'s turn"}
@@ -291,8 +292,8 @@ replaceInventory playerIndex' old' new' extraActions = do
   when (isJust i) $ do
     let i' = fromJust i
     if isJust new'
-    then players . ix (fromPlayerIndex playerIndex') . constructed . ix i' .= fromJust new'
-    else players . ix (fromPlayerIndex playerIndex') . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
+    then players . ix playerIndex' . constructed . ix i' .= fromJust new'
+    else players . ix playerIndex' . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
     extraActions
 
 -- | Add specific amount to player's resources. Throws error on a negative result.
@@ -301,10 +302,10 @@ addToResources pI res = do
   resOld <- resourcesOf pI
   let res' = resOld <> res
   unless (nonNegative res') $ error ("tried to add " ++ show res ++ " to " ++ show resOld)
-  players . ix (fromPlayerIndex pI) . resources .= res'
+  players . ix pI . resources .= res'
 
 resourcesOf :: (RandomGen g) => PlayerIndex -> GameStateReturning g ResourceCount
-resourcesOf pI = use (players . ix (fromPlayerIndex pI) . resources)
+resourcesOf pI = use (players . ix pI . resources)
 
 payFor :: (RandomGen g) => PlayerIndex -> Item -> GameState g
 payFor playerIndex' item' = addToResources playerIndex' (mkNeg $ cost item')
@@ -330,15 +331,14 @@ getCard :: (RandomGen g) => PlayerIndex -> GameState g
 getCard playerIndex' = do
   allCards' <- use allCards
   let (cardTop, restOfCards) = splitAt 1 allCards'
-  players . ix (fromPlayerIndex playerIndex') . newCards <>= cardTop
+  players . ix playerIndex' . newCards <>= cardTop
   allCards .= restOfCards
 
 transferCards :: (RandomGen g) => PlayerIndex -> GameState g
-transferCards playerIndex' = do
-  let i = fromPlayerIndex playerIndex'
-  cards' <- use (players . ix i . newCards)
-  players . ix i . constructed <>= map Card cards'
-  players . ix i . newCards .= []
+transferCards pI = do
+  cards' <- use (players . ix pI . newCards)
+  players . ix pI . constructed <>= map Card cards'
+  players . ix pI . newCards .= []
 
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade playerIndex' tradeAction'
@@ -407,7 +407,7 @@ myFoldM a1 lst f = foldM f a1 lst
 
 doMonopoly :: (RandomGen g) => PlayerIndex -> Monopoly -> GameState g
 doMonopoly playerIndex' (MonopolyOn resType) = do
-  pIs <- uses players (map (view playerIndex))
+  pIs <- uses players Map.keys
   newSum <- myFoldM mempty pIs $ \a b ->
     if b /= playerIndex'
     then do
@@ -505,7 +505,7 @@ possibleRejects :: (RandomGen g) => GameStateReturning g [GameAction]
 possibleRejects = do
   offer' <- openOffer
   canReply <- canReplyToTrade
-  otherIs <- (otherPlayers >>= mapM (return . view playerIndex))
+  otherIs <- (otherPlayers >>= (return . Map.keys))
   let rejects = fmap (\x -> map (reject x Nothing) otherIs) offer'
   return $ maybe [] (filter canReply) rejects
 
@@ -543,16 +543,16 @@ possibleTradeActions = do
     return $ accepts' ++ rejects' ++ completes' ++ cancels
   else return base
 
-otherPlayers :: (RandomGen g) => GameStateReturning g [Player]
+otherPlayers :: (RandomGen g) => GameStateReturning g (Map.Map PlayerIndex Player)
 otherPlayers = do
   current <- use currentPlayer
-  uses players (filter ((/= current) . view playerIndex))
+  uses players (Map.filter ((/= current) . view playerIndex))
 
 mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g [GameAction]
 mkAccept offer' = do
   ps <- otherPlayers
-  let ps' = filter (sufficient (offer'^.asking) . view resources) ps
-  let couldAccept = map (view playerIndex) ps'
+  let ps' = Map.filter (sufficient (offer'^.asking) . view resources) ps
+  let couldAccept = Map.keys ps'
   return $ map (accept offer') couldAccept
 
 possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
@@ -575,7 +575,7 @@ neighborBuildings cp = do
 
 robbableSpotsFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g [CentralPoint]
 robbableSpotsFor playerIndex' = do
-  ps <- use players
+  ps <- use players >>= return . Map.elems
   self <- getPlayer playerIndex'
   let ownColor = color self
   let playersColors = zip ps (map color ps)
@@ -588,13 +588,13 @@ progress = do
   currentPlayerIndex' <- use currentPlayer
   let currentPlayerIndex = fromPlayerIndex currentPlayerIndex'
   adv <- use turnAdvanceBy
-  totalPlayers <- uses players length
+  totalPlayers <- uses players Map.size
   p <- use phase
   let next' = toPlayerIndex $ (totalPlayers + currentPlayerIndex + adv) `mod` totalPlayers
   let newAdv x | x == 3 && adv == 1 = 0
                | x == 3 && adv == 0 = -1
                | otherwise = adv
-  nextPlayer <- uses players (flip (!!) $ fromPlayerIndex next')
+  nextPlayer <- uses players (Map.! next')
   nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
   case p of
     Initial -> if currentPlayerIndex == 0 && adv == -1
@@ -671,12 +671,12 @@ toSpecialPhase special' playerIndex' = do
 makeDiscards :: (RandomGen g) => GameStateReturning g [GameAction]
 makeDiscards = do
   ps <- use players
-  let pRes = map (\p -> (p^.playerIndex, p ^. resources)) ps
-  let pMustDiscard = filter (\(_, r) -> totalResources r > 7) pRes
-  let listDiscards (p,r) = let total' = totalResources r `div` 2
-                               rs = resCombinationsForTotal total'
-                           in  zip (repeat p) $ filter (sufficient r) rs
-  let pDiscards = concatMap listDiscards pMustDiscard
+  let pRes = Map.map (^. resources) ps
+  let pMustDiscard = Map.filter ((> 7) . totalResources) pRes
+  let listDiscards p r = let total' = totalResources r `div` 2
+                             rs = resCombinationsForTotal total'
+                         in  zip (repeat p) $ filter (sufficient r) rs
+  let pDiscards = concat . Map.elems $ Map.mapWithKey listDiscards pMustDiscard
   return $ map mkDiscard pDiscards
 
 -- | Game won by player p.
