@@ -294,9 +294,12 @@ spec = do
 
       it "should allow for building roads once resources are sufficient" $ do
         let findWoodBrickPlayer g = findKeyWhere (\p -> sufficient (p^.resources) (cost $ unbuilt road)) (g^.players)
-        let findSuitable (g, _) = isJust $ findWoodBrickPlayer g
+        let findSuitable (g, _) = let p' = findWoodBrickPlayer g
+                                      isCurrent = fmap (== g^.currentPlayer) p'
+                                      r' = fmap rollFor p'
+                                      hasRolled = fmap (`notElem` (view validActions g)) r'
+                                  in ((g^.phase) == Normal) && isCurrent == Just True && hasRolled == Just True
         let (g', _) = fromJust $ find findSuitable gs
-        let pI = fromJust $ findWoodBrickPlayer g'
         let isRoadPurchase a = maybe False (\item' -> isJust $ item' ^? building.onEdge) (a^? (action.item))
         view validActions g' `shouldSatisfy` any isRoadPurchase
 
