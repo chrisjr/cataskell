@@ -29,9 +29,9 @@ instance Arbitrary Player where
                            <*> [_playerColor p]
                            <*> [_playerIndex p]
                            <*> [_resources p]
-                           <*> [filter (isNothing . preview itemType) $ _constructed p]
+                           <*> shrink' (filter (isNothing . preview itemType) $ _constructed p)
                            <*> [_newCards p]
-                           <*> [[]]
+                           <*> [_bonuses p]
     where shrink' a = a : shrink a
 
 instance Arbitrary PlayerIndex where
@@ -41,7 +41,9 @@ instance Arbitrary (Map.Map PlayerIndex Player) where
   arbitrary = do
     ps <- listOf arbitrary
     return . Map.fromList $ zip (map (view playerIndex) ps) ps
-  shrink m = Map.fromList <$> shrink (Map.toList m)
+  shrink m = Map.fromList <$> shrink' (Map.toList m)
+    where shrink' []     = []
+          shrink' (x:xs) = [ x:xs' | xs' <- shrink xs ] ++ [ x':xs | x'  <- shrink x ]
 
 main :: IO ()
 main = hspec spec

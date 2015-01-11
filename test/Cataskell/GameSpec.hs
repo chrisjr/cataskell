@@ -77,7 +77,7 @@ instance Arbitrary Game where
           shrinkPlayers = let tradePs = concatMap playersReferencedInTrade $ filter (not . isReject) (_openTrades g)
                               lst = tradePs ++ concatMap playersReferenced (_validActions g)
                               necessary = Map.filterWithKey (\k _ -> k `elem` lst) (_players g)
-                          in if ((_players g) /= necessary) then [_players g, necessary] else [necessary]
+                          in if ((_players g) /= necessary) then shrink' (_players g) ++ shrink necessary else shrink' necessary
 
 
 instance Arbitrary NormalGame where
