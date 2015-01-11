@@ -127,16 +127,20 @@ phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, la
 playersExist' :: [PlayerIndex] -> Game -> Bool
 playersExist' pIs g = all (`Map.member` (g^.players)) pIs
 
+playersReferencedInTrade :: TradeAction -> [PlayerIndex]
+playersReferencedInTrade x
+  = case x of
+      Offer offer' -> [offer'^.offeredBy]
+      Accept offer' accepter' -> [offer'^.offeredBy, accepter']
+      Reject offer' rejecter' _ -> [offer'^.offeredBy, rejecter']
+      CompleteTrade offer' accepter' -> [offer'^.offeredBy, accepter']
+      CancelTrade offer' -> [offer'^.offeredBy]
+      Exchange offer' -> [offer'^.offeredBy]
+
 playersReferenced :: GameAction -> [PlayerIndex]
 playersReferenced (PlayerAction actor' act') = nub $ actor':fromAct
   where fromAct = case act' of
-                    Trade x -> case x of
-                                 Offer offer' -> [offer'^.offeredBy]
-                                 Accept offer' accepter' -> [offer'^.offeredBy, accepter']
-                                 Reject offer' rejecter' _ -> [offer'^.offeredBy, rejecter']
-                                 CompleteTrade offer' accepter' -> [offer'^.offeredBy, accepter']
-                                 CancelTrade offer' -> [offer'^.offeredBy]
-                                 Exchange offer' -> [offer'^.offeredBy]
+                    Trade x -> playersReferencedInTrade x
                     _ -> []
 
 playersExistFor' :: GameAction -> Game -> Bool
