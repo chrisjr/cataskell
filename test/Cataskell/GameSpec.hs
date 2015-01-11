@@ -343,7 +343,7 @@ spec = do
         it "should add an offer to the open trades" $ do
           view openTrades g' `shouldBe` [Offer tradeOffer']
         it "should allow others to accept or reject" $ do
-          let vA = view validActions g'
+          let vA = filter isTradeAction $ view validActions g'
           let hasAll acts' valids' = all (`elem` valids') acts'
           vA `shouldSatisfy` hasAll acceptances
           vA `shouldSatisfy` hasAll rejections
@@ -366,7 +366,7 @@ spec = do
           view openTrades accepted `shouldBe` [acceptedOffer, acceptance']
           let pta = evalGame possibleTradeActions g' randRolled
           pta `shouldSatisfy` elem complete'
-          let vA = view validActions g'
+          let vA = filter isTradeAction $ view validActions g'
           vA `shouldSatisfy` elem complete'
 
         let (completed, _) = runGame (update complete') accepted randRolled
