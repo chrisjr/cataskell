@@ -84,6 +84,13 @@ main = hspec spec
 
 spec :: Spec
 spec = do
+  hexCenterSpec
+  hexMapSpec
+  buildingMapSpec
+  functionsSpec
+
+hexCenterSpec :: Spec
+hexCenterSpec =
   describe "A HexCenter" $ do
     it "has a terrain type and accompanying resource" $ do
       let hex = mkHexCenter Mountain 2
@@ -94,46 +101,51 @@ spec = do
       (evaluate . force) (mkHexCenter Mountain 7) `shouldThrow` (const True :: Selector AssertionFailed)
     it "can be generated satisfying this requirement" $ property $
       \hc -> (_terrain (hc :: HexCenter) == Desert) == (_roll hc == 7)
+
+counts :: (Eq k, Ord k) => [k] -> Map.Map k Int
+counts = Map.fromList . map (head &&& length) . group . sort
+
+hexMapSpec :: Spec
+hexMapSpec = do
   describe "A HexMap" $ do
     it "should create a randomly generated set of terrains and rolls" $ property $
-      \hexMap -> (Map.size (hexMap :: HexMap)) == 19
+      \hexMap -> Map.size (hexMap :: HexMap) == 19
     it "should have one 2, one 7, one 12, and two of everything else" $ property $
-      \hexMap -> let rolls' = group . sort . map _roll $ Map.elems (hexMap :: HexMap)
-                     rollCounts = Map.fromList $ map (head &&& length) rolls'
-                     a = ((Map.!) rollCounts 2) == 1
-                     b = ((Map.!) rollCounts 7) == 1
-                     c = ((Map.!) rollCounts 12) == 1
-                     d = (all (== 2) $ map ((Map.!) rollCounts) [3..6])
-                     e = (all (== 2) $ map ((Map.!) rollCounts) [8..11])
-                 in  a && b && c && d && e
+      let rollCounts h = counts . map _roll $ Map.elems h
+          a h = rollCounts h Map.! 2 == 1
+          b h = rollCounts h Map.! 7 == 1
+          c h = rollCounts h Map.! 12 == 1
+          d h = all (== 2) $ map ((Map.!) (rollCounts h)) [3..6]
+          e h = all (== 2) $ map ((Map.!) (rollCounts h)) [8..11]
+      in  \hexMap -> all ($ (hexMap :: HexMap)) [a,b,c,d,e]
     it "should have 3 hills, 4 pastures, 3 mountains, 4 fields, 4 forests, and 1 desert" $ property $
-      \hexMap -> let terrains = group . sort . map _terrain $ Map.elems (hexMap :: HexMap)
-                     terrainCounts = Map.fromList $ zip (map head terrains) (map length terrains)
-                     h = ((Map.!) terrainCounts Hill) == 3
-                     p = ((Map.!) terrainCounts Pasture) == 4
-                     m = ((Map.!) terrainCounts Mountain) == 3
-                     fi = ((Map.!) terrainCounts Field) == 4
-                     fo = ((Map.!) terrainCounts Forest) == 4
-                     d = ((Map.!) terrainCounts Desert) == 1
-                 in h && p && m && fi && fo && d
+      \hexMap -> let terrainCounts = counts . map _terrain $ Map.elems (hexMap :: HexMap)
+                     h  = terrainCounts Map.! Hill     == 3
+                     p  = terrainCounts Map.! Pasture  == 4
+                     m  = terrainCounts Map.! Mountain == 3
+                     fi = terrainCounts Map.! Field    == 4
+                     fo = terrainCounts Map.! Forest   == 4
+                     d  = terrainCounts Map.! Desert   == 1
+                in h && p && m && fi && fo && d
+    it "should have no high-value terrains (6 or 8) next to each other" $ property $ \hexMap -> 
+      checkHexNeighbors hexMap
+  describe "the Desert" $
+    it "should have roll equal to 7" $ property $
+      \hexMap -> let desertHex = head . filter ((== Desert) . _terrain) $ Map.elems (hexMap :: HexMap)
+                 in _roll desertHex == 7
 
-    it "should have no high-value terrains (6 or 8) next to each other" $ property $
-      \hexMap -> checkHexNeighbors hexMap == True
-
-    describe "the Desert" $ do
-      it "should have roll equal to 7" $ property $
-        \hexMap -> let desertHex = head . filter ((== Desert) . _terrain) $ Map.elems (hexMap :: HexMap)
-                   in _roll desertHex == 7
+buildingMapSpec :: Spec
+buildingMapSpec = do
   describe "A BuildingMap" $ do
-    it "should have 54 keys" $ do
+    it "should have 54 keys" $
       Map.size emptyBuildingMap `shouldBe` 54
-    it "should start off empty" $ do
-      Map.elems emptyBuildingMap `shouldSatisfy` (all (== Nothing))
+    it "should start off empty" $
+      Map.elems emptyBuildingMap `shouldSatisfy` all (== Nothing)
   describe "A RoadMap" $ do
-    it "should have 72 keys" $ do
+    it "should have 72 keys" $
       Map.size emptyRoadMap `shouldBe` 72
-    it "should start off empty" $ do
-      Map.elems emptyRoadMap `shouldSatisfy` (all (== Nothing))
+    it "should start off empty" $
+      Map.elems emptyRoadMap `shouldSatisfy` all (== Nothing)
   describe "A Board" $ do
     it "should start off with no buildings and no roads" $ property $
       \board -> view buildings (board :: Board) == emptyBuildingMap
@@ -151,24 +163,57 @@ spec = do
       let board' = build bldg board
       let res' = allResourcesFromRoll 6 board'
       res' `shouldBe` Map.singleton Blue mempty { ore = 1 }
-  describe "build" $ do
+
+functionsSpec :: Spec
+functionsSpec = do
+  describe "build" $
     it "should return a changed board when building a valid item" $ property $
       \board construct -> validConstruct (construct :: Construct) (board :: Board) ==>
         board /= build construct board
   describe "validRoadsFor" $ do
+    it "should never return duplicates" $ property $
+      \board c -> let vr = validRoadsFor (c :: Color) board
+                  in vr == nub vr
+    it "should never return more than 72 options" $ property $
+      \board c -> let vr = validRoadsFor (c :: Color) board
+                  in length vr <= 72
     it "should never include an existing road among valid options" $ property $
       \board c -> let rm' = Map.keys $ getRoads (board :: Board)
                       vr = validRoadsFor (c :: Color) board
                       vr' = map (^?! onEdge.edge) vr
                   in  not $ any (`elem` rm') vr'
     it "should prohibit building further when an enemy settlement blocks the path" $ do
-      pending
+      let board' = evalRand newBoard (mkStdGen 0)
+      let roads' = _roads board'
+      let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top]
+      let es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
+      let mkRoadMap es' color' = Map.fromList $ zip es (map (\e -> Just $ OnEdge e color') es')
+      let blueRoads = mkRoadMap es Blue
+      let p = ps !! 3
+      let interruption = Map.union (Map.singleton p (Just $ OnPoint p Red Settlement)) emptyBuildingMap
+      let blueBoard = board' { _roads = Map.union blueRoads roads', _buildings = interruption }
+      let pastInterruption = Point (2,-3) Bottom
+      let e = listToMaybe $ filter (\e' -> let ps' = [point1 e', point2 e']
+                                           in p `elem` ps' && pastInterruption `notElem` ps') $ Map.keys roads'
+      let invalidRoad = built . road $ fmap (\e' -> (e', Blue)) e
+      validRoadsFor Blue blueBoard `shouldSatisfy` notElem invalidRoad
   describe "validSettlementsFor" $ do
+    it "should never return duplicates" $ property $
+      \board c -> let vs = validSettlementsFor (c :: Color) board
+                  in vs == nub vs
     it "should never include an existing settlement among valid options" $ property $
       \board c -> let sm' = Map.keys $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
                       vs = validSettlementsFor (c :: Color) board
                       vs' = map (^?! onPoint.point) vs
                   in  not $ any (`elem` sm') vs'
+  describe "validCitiesFor" $ do
+    it "should never return duplicates" $ property $
+      \board c -> let vc = validCitiesFor (c :: Color) board
+                  in vc == nub vc
+    it "should return all points that have settlements" $ property $ 
+      \board c -> let sp = Map.keys . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
+                      vcp = mapMaybe (^?onPoint.point) $ validCitiesFor c board
+                  in sort sp == sort vcp
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
@@ -177,9 +222,7 @@ spec = do
     let psShort = [Point (0,-1) Top, Point (1,-2) Bottom, Point (1,-1) Top]
     let es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
     let esShort = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 psShort
-
     let mkRoadMap es' color' = Map.fromList $ zip es (map (\e -> Just $ OnEdge e color') es')
-
     it "should return the color of the player with the longest road and its length" $ do
       let blueRoads = mkRoadMap esShort Blue
       let blueLongest = Map.union blueRoads roads'
