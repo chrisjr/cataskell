@@ -20,6 +20,7 @@ module Cataskell.GameData.Location
 , UndirectedEdge(..)
 , dupleToEdge
 , edgeType
+, mkEdge
 ) where
 
 import Cataskell.Util
@@ -123,6 +124,9 @@ instance Eq UndirectedEdge where
 
 dupleToEdge :: (Point, Point) -> UndirectedEdge
 dupleToEdge (x, y) = UndirectedEdge x y
+
+mkEdge :: (Int, Int, VertexPosition) -> (Int, Int, VertexPosition) -> UndirectedEdge
+mkEdge (a,b,p1) (c,d,p2) = UndirectedEdge (Point (a,b) p1) (Point (c,d) p2)
 
 edgeType :: UndirectedEdge -> EdgeType
 edgeType e | all (== Center) positions = BetweenCenters

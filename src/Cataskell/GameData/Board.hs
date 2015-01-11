@@ -12,7 +12,9 @@ import Data.List ((\\))
 import Control.Lens
 import Data.Monoid
 import qualified Data.Map.Strict as Map
+import Data.List (find)
 import Data.Maybe (mapMaybe, listToMaybe, isNothing)
+import Control.Applicative
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -267,12 +269,11 @@ validRoadsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
         enemyPoints = Map.keys $ Map.filter ((/= color') . color) $ getHabitations board'
         freeEdges' = freeEdges board'
-        pointAdjacent e
-          | (point1 e) `elem` myPoints = Just (point1 e)
-          | (point2 e) `elem` myPoints = Just (point2 e)
-          | otherwise = Nothing
-        notEnemy p = p `notElem` enemyPoints
-        validEdges = filter ((== Just True) . fmap notEnemy . pointAdjacent) freeEdges'
+        pointsAdjacent e = filter (`elem` myPoints) [point1 e, point2 e]
+        notEnemy ps | length ps == 1 = head ps `notElem` enemyPoints -- if only one endpoint belongs to me, can't build
+                    | length ps == 2 = True -- if endpoints belong to me, I can build even though the enemy is there
+                    | otherwise = False
+        validEdges = filter (notEnemy . pointsAdjacent) freeEdges'
     in map (\e -> built (road $ Just (e, color'))) validEdges
 
 validSettlementsFor :: Color -> Board -> [Construct]

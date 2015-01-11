@@ -17,6 +17,7 @@ import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty)
 import Data.Maybe
 import Control.Lens hiding (elements)
+import Control.Monad
 import Control.Monad.Random
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
@@ -78,6 +79,29 @@ instance Arbitrary Board where
                           <*> shrink' (_buildings b)
                           <*> shrink' (_harbors b)
     where shrink' a = a : shrink a
+
+-- | Road Test board
+newtype RTBoard = RT Board
+  deriving (Eq, Ord, Show, Read)
+
+fromRTBoard :: RTBoard -> Board
+fromRTBoard (RT b) = b
+
+nonceRand :: StdGen
+nonceRand = mkStdGen 0 
+
+instance Arbitrary RTBoard where
+  arbitrary = do
+    let board' = evalRand newBoard nonceRand
+    r <- elements [blueRoads, blueRoads2]
+    return . RT $ board' { _roads = r, _buildings = interruptSettlement (Point (1,-2) Top) }
+  shrink rt = map RT $ tail $ Board <$> shrink' (_hexes b)
+                                    <*> [Map.filter isJust (_roads b)]
+                                    <*> [Map.filter isJust (_buildings b)]
+                                    <*> shrink' (_harbors b)
+    where b = fromRTBoard rt
+          shrink' a = a : shrink a
+
 
 main :: IO ()
 main = hspec spec
@@ -164,6 +188,35 @@ buildingMapSpec = do
       let res' = allResourcesFromRoll 6 board'
       res' `shouldBe` Map.singleton Blue mempty { ore = 1 }
 
+getE :: Construct -> UndirectedEdge
+getE (Roadway (OnEdge e _)) = e 
+getE _ = error "not a road"
+
+mkRoadMap :: [UndirectedEdge] -> Color -> RoadMap
+mkRoadMap es' color' = Map.fromList $ zip es' (map (\e -> Just $ OnEdge e color') es')
+
+interruptSettlement :: Point -> BuildingMap
+interruptSettlement p = Map.singleton p (Just $ OnPoint p Red Settlement)
+
+blueRoads :: RoadMap
+blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top]
+                es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
+            in mkRoadMap es Blue
+
+validEdges :: [UndirectedEdge]
+validEdges = [mkEdge (1,-1,Top) (0,-3, Bottom), mkEdge (1,-3,Bottom) (0,-1,Top)]
+
+invalidEdges :: [UndirectedEdge]
+invalidEdges = [ mkEdge (2,-3,Bottom) (1,-1,Top)
+               , mkEdge (1,-2,Top) (2,-3,Bottom)
+               , mkEdge (2,-2, Top) (3,-3, Bottom)]
+
+addedEdge :: UndirectedEdge
+addedEdge = mkEdge (2,-3, Bottom) (2,-2, Top)
+
+blueRoads2 :: RoadMap
+blueRoads2 = Map.union (mkRoadMap [addedEdge] Blue) blueRoads
+
 functionsSpec :: Spec
 functionsSpec = do
   describe "build" $
@@ -182,21 +235,16 @@ functionsSpec = do
                       vr = validRoadsFor (c :: Color) board
                       vr' = map (^?! onEdge.edge) vr
                   in  not $ any (`elem` rm') vr'
-    it "should prohibit building further when an enemy settlement blocks the path" $ do
-      let board' = evalRand newBoard (mkStdGen 0)
-      let roads' = _roads board'
-      let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top]
-      let es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
-      let mkRoadMap es' color' = Map.fromList $ zip es (map (\e -> Just $ OnEdge e color') es')
-      let blueRoads = mkRoadMap es Blue
-      let p = ps !! 3
-      let interruption = Map.union (Map.singleton p (Just $ OnPoint p Red Settlement)) emptyBuildingMap
-      let blueBoard = board' { _roads = Map.union blueRoads roads', _buildings = interruption }
-      let pastInterruption = Point (2,-3) Bottom
-      let e = listToMaybe $ filter (\e' -> let ps' = [point1 e', point2 e']
-                                           in p `elem` ps' && pastInterruption `notElem` ps') $ Map.keys roads'
-      let invalidRoad = built . road $ fmap (\e' -> (e', Blue)) e
-      validRoadsFor Blue blueBoard `shouldSatisfy` notElem invalidRoad
+    context "when an enemy building is on one of the endpoints" $ do
+      let isEmpty = Map.null . Map.mapMaybe id
+      it "should prohibit building if player only controls one side" $ property $
+        \rt -> let b = fromRTBoard rt
+                   hasNeeded = isNothing (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty (_buildings b))
+               in hasNeeded ==> sort (map getE $ validRoadsFor Blue b) == sort validEdges
+      it "should allow building if player controls both sides" $ property $
+        \rt -> let b = fromRTBoard rt
+                   hasNeeded = not (isNothing (join $ Map.lookup addedEdge (_roads b)) || isEmpty (_buildings b))
+               in hasNeeded ==> sort (map getE $ validRoadsFor Blue b) == sort (invalidEdges ++ validEdges)
   describe "validSettlementsFor" $ do
     it "should never return duplicates" $ property $
       \board c -> let vs = validSettlementsFor (c :: Color) board
