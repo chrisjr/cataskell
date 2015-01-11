@@ -494,3 +494,14 @@ spec = do
       it "has no more validActions" $ property $
         \g -> view phase (g :: Game) == End ==>
           null $ view validActions g
+  describe "updateBonuses" $ do
+    context "when comparing roads" $ do
+      it "should grant the LongestRoad when the first player has a road of length 5" $ do
+        pending
+      it "should transfer the LongestRoad when a player's road has been surpassed" $ do
+        pending
+    context "when comparing armies" $ do
+      it "should grant the LargestArmy when the first player has an army of size 3" $ do
+        pending
+      it "should transfer the LargestArmy when a player's army has been surpassed" $ do
+        pending

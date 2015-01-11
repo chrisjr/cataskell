@@ -96,13 +96,13 @@ update action' = do
   when (done && builtFreeRoad) $ if p == Initial then progress else handleFreeRoads p
   when (done && p == Special MovingRobber && movedRobber) backToNormal
 
--- | Move from one game state to the next
+-- | Move from one game state to the next when a RoadBuilding card was played
 handleFreeRoads :: (RandomGen g) => Phase -> GameState g
 handleFreeRoads phase' = do
   playerIndex' <- use currentPlayer
+  updateBonuses
   when (phase' == Special (FreeRoads 2)) $ toSpecialPhase (FreeRoads 1) playerIndex'
   when (phase' == Special (FreeRoads 1)) backToNormal
-  return ()
 
 -- | Checks that the action is valid and executes it if so
 checkAndExecute :: (RandomGen g) => GameAction -> GameStateReturning g Bool
@@ -253,8 +253,8 @@ doAction act'
             M monopoly' -> doMonopoly actorIndex monopoly'
             I invention' -> doInvention actorIndex invention'
             R moveRobber' -> doMoveRobber moveRobber'
-          Purchase x -> doPurchase actorIndex x >> genPlayerActions -- already checked resources
-          Trade x -> doTrade actorIndex x
+          Purchase x -> doPurchase actorIndex x >> updateBonuses >> genPlayerActions
+          Trade x -> doTrade actorIndex x >> genPlayerActions
           Discard x -> doDiscard actorIndex x
           PlayCard x -> doPlayCard actorIndex x
           EndTurn -> do
@@ -343,9 +343,9 @@ transferCards playerIndex' = do
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade playerIndex' tradeAction'
   = case tradeAction' of
-      Offer _ -> addAndUpdateTrades tradeAction'
-      Accept _ _ -> addAndUpdateTrades tradeAction'
-      Reject{} -> addAndUpdateTrades tradeAction'
+      Offer _ -> openTrades <>= [tradeAction']
+      Accept _ _ -> openTrades <>= [tradeAction']
+      Reject{} -> openTrades <>= [tradeAction']
       CompleteTrade offer' accepterIndex' -> do
         addToResources playerIndex' (offer'^.asking)
         addToResources playerIndex' (mkNeg $ offer'^.offering)
@@ -354,11 +354,6 @@ doTrade playerIndex' tradeAction'
         openTrades .= []
       CancelTrade _ -> openTrades .= []
       Exchange offer' -> doExchange playerIndex' offer'
-
-addAndUpdateTrades :: (RandomGen g) => TradeAction -> GameState g
-addAndUpdateTrades tradeAction' = do
-  openTrades <>= [tradeAction']
-  genPlayerActions
 
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
 doExchange playerIndex' offer' = do
@@ -398,10 +393,15 @@ doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card'
   = replaceInventory playerIndex' (Card card') Nothing $ case card' of
       RoadBuilding -> toSpecialPhase (FreeRoads 2) playerIndex'
-      Knight -> toSpecialPhase MovingRobber playerIndex'
+      Knight -> do
+        updateBonuses
+        toSpecialPhase MovingRobber playerIndex'
       Invention -> toSpecialPhase Inventing playerIndex'
       Monopoly -> toSpecialPhase Monopolizing playerIndex'
       VictoryPoint -> return ()
+
+updateBonuses :: (RandomGen g) => GameState g
+updateBonuses = return () -- TODO
 
 myFoldM :: Monad m => a -> [b] -> (a -> b -> m a) -> m a
 myFoldM a1 lst f = foldM f a1 lst
