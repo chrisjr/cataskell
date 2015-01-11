@@ -287,3 +287,6 @@ validCitiesFor color' board'
   = let bldgs = getHabitationsFor color' board'
         points = Map.keys $ Map.filter (\h -> isSettlement $ Building $ Edifice h) bldgs
     in  map (\p -> built (city $ Just (p, color'))) points
+
+longestRoad :: Board -> (Color, Int)
+longestRoad = assert False undefined

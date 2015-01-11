@@ -8,7 +8,7 @@ import Control.Monad.State
 import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
-import Control.Applicative ((<$>), (<*>), pure)
+import Control.Applicative ((<$>), (<*>))
 import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe (fromJust, isJust, isNothing, catMaybes, mapMaybe, listToMaybe)
@@ -300,7 +300,8 @@ addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
 addToResources pI res = do 
   resOld <- resourcesOf pI
   let res' = resOld <> res
-  assert (nonNegative res') players . ix (fromPlayerIndex pI) . resources .= res'
+  unless (nonNegative res') $ error ("tried to add " ++ show res ++ " to " ++ show resOld)
+  players . ix (fromPlayerIndex pI) . resources .= res'
 
 resourcesOf :: (RandomGen g) => PlayerIndex -> GameStateReturning g ResourceCount
 resourcesOf pI = use (players . ix (fromPlayerIndex pI) . resources)

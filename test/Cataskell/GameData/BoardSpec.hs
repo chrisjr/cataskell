@@ -11,6 +11,7 @@ import Cataskell.GameData.Board
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
 import Cataskell.GameData.Location
+import Cataskell.Util
 import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Monoid (mempty)
@@ -168,3 +169,31 @@ spec = do
                       vs = validSettlementsFor (c :: Color) board
                       vs' = map (^?! onPoint.point) vs
                   in  not $ any (`elem` sm') vs'
+  describe "longestRoad" $ do
+    let board' = evalRand newBoard (mkStdGen 0)
+    let roads' = _roads board'
+    let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top,
+              Point (2, -3) Bottom, Point (2,-2) Top]
+    let psShort = [Point (0,-1) Top, Point (1,-2) Bottom, Point (1,-1) Top]
+    let es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
+    let esShort = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 psShort
+
+    let mkRoadMap es' color' = Map.fromList $ zip es (map (\e -> Just $ OnEdge e color') es')
+
+    it "should return the color of the player with the longest road and its length" $ do
+      let blueRoads = mkRoadMap esShort Blue
+      let blueLongest = Map.union blueRoads roads'
+      let blueLongestBoard = board' { _roads = blueLongest }
+      longestRoad blueLongestBoard `shouldBe` (Blue, 3)
+      let redRoads = mkRoadMap es Red
+      let redLongest = Map.union redRoads blueLongest
+      let redLongestBoard = board' { _roads = redLongest }
+      longestRoad redLongestBoard `shouldBe` (Red, 5)
+    it "should not count roads interrupted by enemy settlements" $ do
+      let whiteRoads = mkRoadMap es White
+      let whiteLongest = Map.union whiteRoads roads'
+      let p = ps !! 4 
+      let interruption = Map.union (Map.singleton p (Just $ OnPoint p Red Settlement)) emptyBuildingMap
+      let whiteLongestInterrupted = board' { _roads = whiteLongest, _buildings = interruption }
+      longestRoad whiteLongestInterrupted `shouldBe` (White, 3)
+

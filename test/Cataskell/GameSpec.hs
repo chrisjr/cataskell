@@ -411,21 +411,24 @@ spec = do
           view phase postDiscard `shouldBe` Special MovingRobber
       context "MovingRobber" $ do
         describe "the player must move the robber" $ do
-          specify "to a hex ringed by players with >2 visible victory points" $ property $
-            \ng -> let g = fromNormalGame ng
-                       scores' = evalGame scores (g :: Game) randRolled 
-                   in any (>2) scores' ==>
-                        let (g', _) = runGame (forceRoll 7) g randRolled 
-                            psScores = zip (map toPlayerIndex [0..3]) scores'
-                            pColors = Map.fromList $ map (\p -> (p^.playerIndex, color p)) $ view players g'
-                            high = map fst $ filter ((>2) . snd) psScores
-                            acceptableColors = mapMaybe (`Map.lookup` pColors) high
-                            vA = view validActions g'
-                            checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
-                            isValidRobberMove a = case a^.action of
-                                                    SpecialAction (R (MoveRobber dest)) -> checkDest dest
-                                                    _ -> False
-                        in  all isValidRobberMove vA
+          context "when someone has >2 visible victory points" $ do
+            specify "to a hex ringed by players with >2 visible victory points" $ property $
+              \ng -> let g = fromNormalGame ng
+                         scores' = evalGame scores (g :: Game) randRolled 
+                     in any (>2) scores' ==>
+                          let (g', _) = runGame (forceRoll 7) g randRolled 
+                              psScores = zip (map toPlayerIndex [0..3]) scores'
+                              pColors = Map.fromList $ map (\p -> (p^.playerIndex, color p)) $ view players g'
+                              high = map fst $ filter ((>2) . snd) psScores
+                              acceptableColors = mapMaybe (`Map.lookup` pColors) high
+                              vA = view validActions g'
+                              checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
+                              isValidRobberMove a = case a^.action of
+                                                      SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                      _ -> False
+                          in  all isValidRobberMove vA
+            specify "and should rob one of the players there" $ do
+              pending
           specify "to an unoccupied hex, otherwise" $ property $ do
             \ng -> 
                let g = fromNormalGame ng
