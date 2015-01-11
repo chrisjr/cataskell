@@ -57,7 +57,7 @@ mkGames :: (RandomGen g) => Rand g [Game]
 mkGames = replicateM 100 mkGame
 
 randomGames :: [Game]
-randomGames = evalRand mkGames (mkStdGen 0)
+randomGames = evalRand mkGames (mkStdGen 1)
 
 instance Arbitrary Game where
   arbitrary = elements randomGames

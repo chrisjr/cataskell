@@ -60,4 +60,16 @@ spec = do
       resourceFromTerrain Mountain `shouldBe` mempty { ore =  1 }
       resourceFromTerrain Desert `shouldBe` mempty
       resourceFromTerrain Field `shouldBe` mempty { wheat = 1 }
-      
+  describe "filteredResCounts" $ do
+    it "should get a new resource count containing only resources of a certain type" $ do
+      let res = ResourceCount { lumber = 1
+                              , wool = 2
+                              , wheat = 3
+                              , brick = 4
+                              , ore = 5
+                              }
+      filteredResCount Lumber res `shouldBe` mempty { lumber =  1 }
+      filteredResCount Wool res `shouldBe` mempty { wool =  2 }
+      filteredResCount Wheat res `shouldBe` mempty { wheat = 3}
+      filteredResCount Brick res `shouldBe` mempty { brick =  4 }
+      filteredResCount Ore res `shouldBe` mempty { ore =  5 }
