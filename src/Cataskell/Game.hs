@@ -382,12 +382,11 @@ getHarbors playerIndex' = do
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
 doDiscard playerIndex' (DiscardAction _ r) = do 
   addToResources playerIndex' (mkNeg r)
-  vA <- use validActions
-  let vA' = vA \\ [mkDiscard (playerIndex', r)]
-  validActions .= vA'
-  when (null vA') $ do
-   pI <- use currentPlayer
-   toSpecialPhase MovingRobber pI
+  discards <- makeDiscards
+  validActions .= discards
+  when (null discards) $ do
+    pI <- use currentPlayer
+    toSpecialPhase MovingRobber pI
 
 doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card'
