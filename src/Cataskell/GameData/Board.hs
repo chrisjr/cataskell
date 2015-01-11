@@ -265,9 +265,14 @@ roadsToPointsFor color' board'
 validRoadsFor :: Color -> Board -> [Construct]
 validRoadsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
+        enemyPoints = Map.keys $ Map.filter ((/= color') . color) $ getHabitations board'
         freeEdges' = freeEdges board'
-        isAdjacentToMe e = (point1 e `elem` myPoints) || (point2 e `elem` myPoints)
-        validEdges = filter isAdjacentToMe freeEdges'
+        pointAdjacent e
+          | (point1 e) `elem` myPoints = Just (point1 e)
+          | (point2 e) `elem` myPoints = Just (point2 e)
+          | otherwise = Nothing
+        notEnemy p = p `notElem` enemyPoints
+        validEdges = filter ((== Just True) . fmap notEnemy . pointAdjacent) freeEdges'
     in map (\e -> built (road $ Just (e, color'))) validEdges
 
 validSettlementsFor :: Color -> Board -> [Construct]

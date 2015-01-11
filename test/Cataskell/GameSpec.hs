@@ -110,8 +110,9 @@ spec = do
                in (n > 0) || (view phase game == End)
     it "has only valid actions in the validActions list" $ property $
       \game stdGen -> let vA = (game :: Game) ^. validActions
+                          allExist = all (`playersExistFor'` game) vA
                           isValid' x = evalRand (evalStateT (isValid x) game) (stdGen :: StdGen)
-                      in all isValid' vA
+                      in allExist ==> all isValid' vA
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores' = evalGame scores game (mkStdGen 0)
                    highestCount = last . map (head &&& length) . group $ sort scores'
@@ -122,9 +123,11 @@ spec = do
     it "should deduct resources when a valid purchase is made" $ property $
       \ng pI -> 
        let game = fromNormalGame ng
-           purchase' = find (isJust . preview (action.item.building)) (game ^. validActions)
+           vA = game ^. validActions
+           purchase' = find (isJust . preview (action.item.building)) vA
+           allExist = all (`playersExistFor'` game) vA
            bldg = purchase' >>= preview (action.item.building)
-       in isJust bldg ==>
+       in isJust bldg && allExist ==>
          let i = fromPlayerIndex pI
              oldRes = game ^. players . ix i . resources
              purchase'' = fromJust purchase'
@@ -146,14 +149,15 @@ spec = do
         \ng -> let r' = mkStdGen 0
                    g = fromNormalGame ng
                    pI = view currentPlayer g
-               in and $ evalGame (possiblePurchases pI >>= \x -> mapM isValid x) g r'
+                   exists = playersExist' [pI] g
+               in exists ==> and $ evalGame (possiblePurchases pI >>= \x -> mapM isValid x) g r'
     context "possibleDevelopmentCards" $ do
       it "should not generate invalid actions" $ property $
         \ng -> let r' = mkStdGen 0
                    g = fromNormalGame ng
                    pI = view currentPlayer g
-               in  and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
-
+                   exists = playersExist' [pI] g
+               in  exists ==> and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
     context "possibleAccepts" $ do
       it "should generate accepts when an offer is present" $ property $ 
         \ng -> let g = fromNormalGame ng
@@ -164,9 +168,12 @@ spec = do
                              asker' = x^?! offer.offeredBy
                          in find (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
                    hasEnough = fmap f offer'
-               in null accepts' && isJust offer' && isJust hasEnough ==> let stdGen = mkStdGen 0
-                                                                             accepts'' = evalGame possibleAccepts g stdGen
-                                                                         in not $ null accepts''
+                   oh = liftM2 (,) offer' (join hasEnough)
+                   allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'^.playerIndex] g) oh
+               in null accepts' && isJust offer' && isJust hasEnough && (allExist == Just True) ==> 
+                 let stdGen = mkStdGen 0
+                     accepts'' = evalGame possibleAccepts g stdGen
+                 in not $ null accepts''
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)
@@ -205,7 +212,8 @@ spec = do
         \ng -> let g = fromNormalGame ng 
                    r' = mkStdGen 0
                    ptas = evalGame possibleTradeActions g r'
-               in  all (\x -> evalGame (isValid x) g r') ptas
+                   allExist = all (`playersExistFor'` g) ptas
+               in  allExist ==> all (\x -> evalGame (isValid x) g r') ptas
     context "getCard" $ do
       it "should add a card to a player's newCards field" $ property $
         \ng -> let g = fromNormalGame ng
