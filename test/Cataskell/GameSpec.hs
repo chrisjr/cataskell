@@ -109,6 +109,9 @@ spec = do
     it "has a non-zero list of next actions, unless at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
                in (n > 0) || (view phase game == End)
+    it "has no duplicates in the validActions list" $ property $
+      \game -> let vA = (game :: Game) ^. validActions
+               in vA == nub vA
     it "has only valid actions in the validActions list" $ property $
       \game stdGen -> let vA = (game :: Game) ^. validActions
                           allExist = all (`playersExistFor'` game) vA
