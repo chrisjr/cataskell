@@ -385,7 +385,7 @@ getHarbors playerIndex' = do
 
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
 doDiscard playerIndex' (DiscardAction _ r) = do 
-  players . ix (fromPlayerIndex playerIndex') . resources <>= mkNeg r
+  addToResources playerIndex' (mkNeg r)
   vA <- use validActions
   let vA' = vA \\ [mkDiscard (playerIndex', r)]
   validActions .= vA'
