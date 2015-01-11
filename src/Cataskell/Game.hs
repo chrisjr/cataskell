@@ -178,15 +178,8 @@ offerOriginatedWith :: TradeOffer -> PlayerIndex -> Precondition Game
 offerOriginatedWith offer' playerIndex'
   = Precondition (\_ -> offer'^.offeredBy == playerIndex') ("offer originated by " ++ show playerIndex')
 
-getPlayer :: (RandomGen g) => PlayerIndex -> GameStateReturning g Player
-getPlayer pI = do
-  p <- preuse (players . ix pI)
-  maybe (error (show pI ++ " does not exist")) return p
-
-scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g Int
-scoreFor pI = do
-  player' <- getPlayer pI
-  return $ view score player'
+scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Maybe Int)
+scoreFor pI = preuse (players.ix pI.score)
 
 scores :: (RandomGen g) => GameStateReturning g [Int]
 scores = do
@@ -243,12 +236,13 @@ doAction act'
           Roll -> doRoll
           BuildForFree c' -> do
             doBuild actorIndex c'
-            player' <- getPlayer actorIndex
-            let totalSettlements = length . filter isSettlement $ player' ^. constructed
+            player' <- preuse (players . ix actorIndex)
+            let player'' = assert (isJust player') fromJust player'
+            let totalSettlements = length . filter isSettlement $ player'' ^. constructed
             when ((c'^?onPoint.buildingType) == Just Settlement) $ do
               when (totalSettlements == 2) $ giveStartingResources actorIndex
               let c'' = fromJust $ c' ^? onPoint
-              newRoads <- uses (board.roads) (initialRoadsFor player' c'')
+              newRoads <- uses (board.roads) (initialRoadsFor player'' c'')
               validActions .= newRoads
           SpecialAction x -> case x of
             M monopoly' -> doMonopoly actorIndex monopoly'
@@ -261,18 +255,20 @@ doAction act'
           EndTurn -> do
             transferCards actorIndex
             scoreIsNow <- scoreFor actorIndex
-            if scoreIsNow >= 10
+            if scoreIsNow >= Just 10
             then wonBy actorIndex
             else progress
 
 giveStartingResources :: (RandomGen g) => PlayerIndex -> GameState g
 giveStartingResources pI = do
   hasBuilt <- inventory pI
-  let lastSettlement = last . filter isSettlement $ hasBuilt
-  let p' = fromJust $ lastSettlement ^? building.onPoint
-  b <- use board
-  let res = allStartingResources p' b
-  addToResources pI res
+  let lastSettlement = (last . filter isSettlement) `fmap` hasBuilt
+  when (isJust lastSettlement) $ do
+    let lastSettlement' = fromJust lastSettlement
+    let p' = fromJust $ lastSettlement' ^? building.onPoint
+    b <- use board
+    let res = allStartingResources p' b
+    addToResources pI res
 
 -- | Find an appropriate construct in the player inventory and, if it exists,
 -- | execute the build request; otherwise do nothing.
@@ -282,18 +278,19 @@ doBuild p' construct' = do
   b <- use board
   replaceInventory p' potential (Just $ Building construct') $ board .= build construct' b
 
-inventory :: (RandomGen g) => PlayerIndex -> GameStateReturning g [Item]
-inventory playerIndex' = liftM (view constructed) $ getPlayer playerIndex'
+inventory :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Maybe [Item])
+inventory playerIndex' = preuse (players.ix playerIndex'.constructed)
 
 replaceInventory :: (RandomGen g) => PlayerIndex -> Item -> Maybe Item -> GameState g -> GameState g
 replaceInventory playerIndex' old' new' extraActions = do
   hasLeft <- inventory playerIndex'
-  let i = elemIndex old' hasLeft
+  let i = join $ elemIndex old' `fmap` hasLeft
   when (isJust i) $ do
+    let hasLeft' = fromJust hasLeft
     let i' = fromJust i
     if isJust new'
     then players . ix playerIndex' . constructed . ix i' .= fromJust new'
-    else players . ix playerIndex' . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
+    else players . ix playerIndex' . constructed .= hasLeft' ^.. folded . ifiltered (\i'' _ -> i'' /= i')
     extraActions
 
 -- | Add specific amount to player's resources. Throws error on a negative result.
@@ -367,9 +364,8 @@ doExchange playerIndex' offer' = do
 getPlayerBuildings :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Map.Map Point OnPoint)
 getPlayerBuildings playerIndex' = do
   b <- use board
-  player' <- getPlayer playerIndex'
-  let color' = color player'
-  return $ Map.mapMaybe id $ Map.filter (\x -> color `fmap` x == Just color') $ b^.buildings
+  color' <- preuses (players.ix playerIndex') color
+  return $ Map.mapMaybe id $ Map.filter (\x -> isJust color' && color `fmap` x == color') $ b^.buildings
 
 getHarbors :: (RandomGen g) => PlayerIndex -> GameStateReturning g [ResourceCount -> Int]
 getHarbors playerIndex' = do
@@ -450,19 +446,23 @@ genPlayerActions = do
 
 possiblePurchases :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possiblePurchases playerIndex' = do
-  player' <- getPlayer playerIndex'
+  player' <- preuse (players.ix playerIndex')
   b <- use board
-  let roads' = validRoadsFor (color player') b
-  let settlements' = validSettlementsFor (color player') b
-  let cities' = validCitiesFor (color player') b
-  let buildings' = concat [roads', settlements', cities']
-  let res = player'^.resources
-  let possibleBuildings = filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
-  let cards' = if sufficient res (cost $ Potential DevelopmentCard)
-               then [purchase playerIndex' (Potential DevelopmentCard)]
-               else []
-  let mkPurchase = purchase playerIndex' . Building
-  return $ cards' ++ map mkPurchase possibleBuildings
+  if isJust player'
+  then do
+    let player'' = fromJust player'
+    let roads' = validRoadsFor (color player'') b
+    let settlements' = validSettlementsFor (color player'') b
+    let cities' = validCitiesFor (color player'') b
+    let buildings' = concat [roads', settlements', cities']
+    let res = view resources player''
+    let possibleBuildings = filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
+    let cards' = if sufficient res (cost $ Potential DevelopmentCard)
+                 then [purchase playerIndex' (Potential DevelopmentCard)]
+                 else []
+    let mkPurchase = purchase playerIndex' . Building
+    return $ cards' ++ map mkPurchase possibleBuildings
+  else return []
 
 simpleOffers :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 simpleOffers playerIndex' = do
@@ -558,8 +558,8 @@ mkAccept offer' = do
 possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 possibleDevelopmentCards playerIndex' = do
   items' <- inventory playerIndex'
-  let cards' = filter (/= VictoryPoint) $ mapMaybe (^? card) items'
-  return $ map (mkPlayCard playerIndex') cards'
+  let cards' = (filter (/= VictoryPoint) . mapMaybe (^? card)) `fmap` items'
+  return $ maybe [] (map (mkPlayCard playerIndex')) cards'
 
 canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 canMoveRobberTo playerIndex' = do
@@ -576,11 +576,14 @@ neighborBuildings cp = do
 robbableSpotsFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g [CentralPoint]
 robbableSpotsFor playerIndex' = do
   ps <- use players >>= return . Map.elems
-  self <- getPlayer playerIndex'
-  let ownColor = color self
-  let playersColors = zip ps (map color ps)
-  let protected = nub $ ownColor:(map snd $ filter (\(p,_) -> view displayScore p < 2) playersColors)
-  filterM (neighborBuildings >=> return . all (not . flip elem protected) . map color) hexCenterPoints
+  ownColor <- preuses (players.ix playerIndex') color
+  if isJust ownColor
+  then do
+    let ownColor' = fromJust ownColor
+    let playersColors = zip ps (map color ps)
+    let protected = nub $ ownColor':(map snd $ filter (\(p,_) -> view displayScore p < 2) playersColors)
+    filterM (neighborBuildings >=> return . all (not . flip elem protected) . map color) hexCenterPoints
+  else return []
 
 -- | Called on EndTurn action or in initial phase
 progress :: (RandomGen g) => GameState g
@@ -602,8 +605,7 @@ progress = do
                 turnAdvanceBy .= 1
                 initialToNormal
                else do
-                 currentPlayer .= next'
-                 validActions .= nextActionsIfInitial
+                 switchToPlayer next' nextActionsIfInitial
                  turnAdvanceBy .= newAdv (fromPlayerIndex next')
     Normal -> switchToPlayer next' [rollFor next']
     Special _ -> return () -- if progress called in a special phase, do nothing
@@ -652,9 +654,11 @@ toSpecialPhase special' playerIndex' = do
   openTrades .= []
   case special' of
       FreeRoads _ -> do
-        player' <- getPlayer playerIndex'
-        possibleRoads <- uses board (validRoadsFor $ color player')
-        validActions .= map (mkFree playerIndex') possibleRoads
+        color' <- preuses (players.ix playerIndex') color
+        when (isJust color') $ do
+          let color'' = fromJust color'
+          possibleRoads <- uses board (validRoadsFor color'')
+          validActions .= map (mkFree playerIndex') possibleRoads
       RobberAttack -> do -- ^ If no one has more than 7 resources, move on to MovingRobber.
         mustDiscard <- makeDiscards
         if not $ null mustDiscard
