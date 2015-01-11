@@ -266,7 +266,7 @@ doAction act'
 
 giveStartingResources :: (RandomGen g) => PlayerIndex -> GameState g
 giveStartingResources pI = do
-  hasBuilt <- use (players . ix (fromPlayerIndex pI) . constructed)
+  hasBuilt <- inventory pI
   let lastSettlement = last . filter isSettlement $ hasBuilt
   let p' = fromJust $ lastSettlement ^? building.onPoint
   b <- use board
@@ -286,7 +286,7 @@ inventory playerIndex' = liftM (view constructed) $ getPlayer playerIndex'
 
 replaceInventory :: (RandomGen g) => PlayerIndex -> Item -> Maybe Item -> GameState g -> GameState g
 replaceInventory playerIndex' old' new' extraActions = do
-  hasLeft <- use (players . ix (fromPlayerIndex playerIndex') . constructed)
+  hasLeft <- inventory playerIndex'
   let i = elemIndex old' hasLeft
   when (isJust i) $ do
     let i' = fromJust i
@@ -295,8 +295,15 @@ replaceInventory playerIndex' old' new' extraActions = do
     else players . ix (fromPlayerIndex playerIndex') . constructed .= hasLeft ^.. folded . ifiltered (\i'' _ -> i'' /= i')
     extraActions
 
+-- | Add specific amount to player's resources. Throws error on a negative result.
 addToResources :: (RandomGen g) => PlayerIndex -> ResourceCount -> GameState g
-addToResources i res = players . ix (fromPlayerIndex i) . resources <>= res
+addToResources pI res = do 
+  resOld <- resourcesOf pI
+  let res' = resOld <> res
+  assert (nonNegative res') players . ix (fromPlayerIndex pI) . resources .= res'
+
+resourcesOf :: (RandomGen g) => PlayerIndex -> GameStateReturning g ResourceCount
+resourcesOf pI = use (players . ix (fromPlayerIndex pI) . resources)
 
 payFor :: (RandomGen g) => PlayerIndex -> Item -> GameState g
 payFor playerIndex' item' = addToResources playerIndex' (mkNeg $ cost item')
@@ -339,10 +346,10 @@ doTrade playerIndex' tradeAction'
       Accept _ _ -> addAndUpdateTrades tradeAction'
       Reject{} -> addAndUpdateTrades tradeAction'
       CompleteTrade offer' accepterIndex' -> do
-        players . ix (fromPlayerIndex playerIndex') . resources <>= offer'^.asking
-        players . ix (fromPlayerIndex playerIndex') . resources <>= mkNeg (offer'^.offering)
-        players . ix (fromPlayerIndex accepterIndex') . resources <>= offer'^.offering
-        players . ix (fromPlayerIndex accepterIndex') . resources <>= mkNeg (offer'^.asking)
+        addToResources playerIndex' (offer'^.asking)
+        addToResources playerIndex' (mkNeg $ offer'^.offering)
+        addToResources accepterIndex' (offer'^.offering)
+        addToResources accepterIndex' (mkNeg $ offer'^.asking)
         openTrades .= []
       CancelTrade _ -> openTrades .= []
       Exchange offer' -> doExchange playerIndex' offer'
@@ -400,21 +407,21 @@ myFoldM a1 lst f = foldM f a1 lst
 
 doMonopoly :: (RandomGen g) => PlayerIndex -> Monopoly -> GameState g
 doMonopoly playerIndex' (MonopolyOn resType) = do
-  ptotal <- uses players length
-  newSum <- myFoldM mempty [0 .. ptotal] $ \a b ->
-    if b /= fromPlayerIndex playerIndex'
+  pIs <- uses players (map (view playerIndex))
+  newSum <- myFoldM mempty pIs $ \a b ->
+    if b /= playerIndex'
     then do
-      res <- use (players . ix b . resources)
+      res <- resourcesOf b
       let res' = filteredResCount resType res
-      players . ix b . resources <>= mkNeg res'
+      addToResources b (mkNeg res')
       return $ a <> res'
     else return a
-  players . ix (fromPlayerIndex playerIndex') . resources <>= newSum
+  addToResources playerIndex' newSum
   backToNormal
 
 doInvention :: (RandomGen g) => PlayerIndex -> Invention -> GameState g
 doInvention playerIndex' (InventionOf res) = do 
-  players . ix (fromPlayerIndex playerIndex') . resources <>= res
+  addToResources playerIndex' res
   backToNormal
 
 doMoveRobber :: (RandomGen g) => MoveRobber -> GameState g
@@ -459,7 +466,7 @@ possiblePurchases playerIndex' = do
 
 simpleOffers :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
 simpleOffers playerIndex' = do
-  pRes <- use (players . ix (fromPlayerIndex playerIndex') . resources)
+  pRes <- resourcesOf playerIndex'
   let singles = resCombinationsForTotal 1
   let canOffer = filter (sufficient pRes) singles
   let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> singles

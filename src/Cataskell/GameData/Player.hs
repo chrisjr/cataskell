@@ -1,24 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Cataskell.GameData.Player
-( PlayerIndex
-, toPlayerIndex
-, fromPlayerIndex
-, Player
-, playerName
-, playerIndex
-, resources
-, constructed
-, newCards
-, bonuses
-, mkPlayer
-, mkPlayers
-, validPlayer
-, displayScore
-, score
-, devCards
-) where
+module Cataskell.GameData.Player where
 
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources

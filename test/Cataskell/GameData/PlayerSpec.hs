@@ -6,19 +6,30 @@ import Data.Monoid
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
+import Control.Applicative ((<$>), (<*>))
+import Data.Maybe (isNothing)
 import Control.Lens hiding (elements)
 import Control.Exception (assert)
 
+import Cataskell.GameData.BasicsSpec() -- get Arbitrary ResourceCount 
 import Cataskell.GameData.ResourcesSpec() -- get Arbitrary ResourceCount 
 
 instance Arbitrary Player where
   arbitrary = do
     i <- elements [0..3]
     name <- elements ["1", "2", "3", "4"]
-    color <- elements [Red, Blue, Orange, White]
-    let p = mkPlayer (i, color, name)
+    color' <- elements [Red, Blue, Orange, White]
+    let p = mkPlayer (i, color', name)
     r <- arbitrary
     return $ resources .~ r $ p
+  shrink p = tail $ Player <$> shrink' (_playerName p)
+                           <*> [_playerColor p]
+                           <*> [_playerIndex p]
+                           <*> [_resources p]
+                           <*> [filter (isNothing . preview itemType) $ _constructed p]
+                           <*> [_newCards p]
+                           <*> [[]]
+    where shrink' a = a : shrink a
 
 instance Arbitrary PlayerIndex where
   arbitrary = toPlayerIndex `fmap` elements [0..3]
