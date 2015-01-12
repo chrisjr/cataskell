@@ -153,19 +153,19 @@ gameStateReturningSpec :: Spec
 gameStateReturningSpec =
   describe "GameStateReturning functions" $ do
     let game = head randomGames
-    let allValid ng f = let g = fromNormalGame ng
+    let allValid f ng = let g = fromNormalGame ng
                             pI = view currentPlayer g
                             r' = mkStdGen 0
                         in and $ evalGame (f pI >>= \x -> mapM isValid x) g r'
     context "simpleOffers" $
       it "should not generate invalid actions" $ property $
-        \ng -> allValid ng simpleOffers
+        allValid simpleOffers
     context "possiblePurchases" $
       it "should not generate invalid actions" $ property $
-        \ng -> allValid ng possiblePurchases
+        allValid possiblePurchases
     context "possibleDevelopmentCards" $
       it "should not generate invalid actions" $ property $
-        \ng -> allValid ng possibleDevelopmentCards
+        allValid possibleDevelopmentCards
     context "possibleAccepts" $
       it "should generate accepts when an offer is present" $ property $ 
         \ng -> let g = fromNormalGame ng
@@ -190,11 +190,12 @@ gameStateReturningSpec =
                    , set (players . ix (toPlayerIndex 1) . resources) mempty { wheat = 1 }
                    , set (players . ix (toPlayerIndex 2) . resources) mempty
                    , set openTrades [Offer offer']
+                   , set currentPlayer (toPlayerIndex 0)
                    ]
       let offerGame = foldr (.) id setAll game
       let offerAndAcceptGame = set openTrades [Offer offer', accept'^?!action.trade] offerGame
       let getFromGame x g = evalGame x g (mkStdGen 0)
-      let actionsFromGame = getFromGame possibleTradeActions
+      let actionsFromGame = getFromGame (possibleTradeActions (toPlayerIndex 0))
       it "should generate an accept when offer is present" $
         actionsFromGame offerGame `shouldSatisfy` elem accept'
       it "should generate a complete when offer and acceptance are present" $
@@ -217,11 +218,7 @@ gameStateReturningSpec =
       it "should always generate a complete when accepts are present" $ property $
         \ng -> let g = fromNormalGame ng in checkIfAny isAccept (g :: Game) ==> checkFor isComplete g
       it "should never produce invalid actions" $ property $
-        \ng -> let g = fromNormalGame ng 
-                   r' = mkStdGen 0
-                   ptas = evalGame possibleTradeActions g r'
-                   allExist = all (`playersExistFor'` g) ptas
-               in  allExist ==> all (\x -> evalGame (isValid x) g r') ptas
+        allValid possibleTradeActions
     context "getCard" $
       it "should add a card to a player's newCards field" $ property $
         \ng -> let g = fromNormalGame ng
@@ -370,7 +367,7 @@ sampleGameSpec = do
 
         it "should let another player accept" $ do
           view openTrades accepted `shouldBe` [acceptedOffer, acceptance']
-          let pta = evalGame possibleTradeActions g' randRolled
+          let pta = evalGame (possibleTradeActions pI) g' randRolled
           pta `shouldSatisfy` elem complete'
           let vA = filter isTradeAction $ view validActions g'
           vA `shouldSatisfy` elem complete'

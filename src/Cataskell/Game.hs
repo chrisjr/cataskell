@@ -124,7 +124,7 @@ isValid action' = do
 
 -- | Creates a predicate that is true when a game is in one of the specified phases.
 phaseOneOf :: [Phase] -> Precondition Game
-phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, label = "phase one of: " ++ (show phases) } 
+phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, label = "phase one of: " ++ show phases } 
 
 playersExist'' :: Set PlayerIndex -> Game -> Bool
 playersExist'' pIs g = let keys = Map.keysSet (g^.players)
@@ -450,7 +450,7 @@ genPlayerActions :: (RandomGen g) => GameState g
 genPlayerActions = do
   currentPlayerIndex <- use currentPlayer
   purchases' <- possiblePurchases currentPlayerIndex
-  trades <- possibleTradeActions
+  trades <- possibleTradeActions currentPlayerIndex
   cardsToPlay <- possibleDevelopmentCards currentPlayerIndex
   validActions .= purchases' ++ trades ++ cardsToPlay ++ [mkEndTurn currentPlayerIndex]
 
@@ -515,7 +515,7 @@ possibleRejects :: (RandomGen g) => GameStateReturning g [GameAction]
 possibleRejects = do
   offer' <- openOffer
   canReply <- canReplyToTrade
-  otherIs <- (otherPlayers >>= (return . Map.keys))
+  otherIs <- liftM Map.keys otherPlayers
   let rejects = fmap (\x -> map (reject x Nothing) otherIs) offer'
   return $ maybe [] (filter canReply) rejects
 
@@ -538,9 +538,8 @@ possibleCompletes = do
     return $ catMaybes completes'
   else return []
 
-possibleTradeActions :: (RandomGen g) => GameStateReturning g [GameAction]
-possibleTradeActions = do
-  playerIndex' <- use currentPlayer
+possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possibleTradeActions playerIndex' = do
   base <- simpleOffers playerIndex'
   offer' <- openOffer
   if isJust offer'
@@ -549,7 +548,7 @@ possibleTradeActions = do
     accepts' <- possibleAccepts
     rejects' <- possibleRejects
     completes' <- possibleCompletes
-    let cancels = if (offer''^.offeredBy == playerIndex') then [cancel offer''] else []
+    let cancels = if offer''^.offeredBy == playerIndex' then [cancel offer''] else []
     return $ accepts' ++ rejects' ++ completes' ++ cancels
   else return base
 
