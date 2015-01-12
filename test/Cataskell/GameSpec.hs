@@ -87,7 +87,7 @@ instance Arbitrary NormalGame where
 
 instance Arbitrary InitialGame where
   arbitrary = do
-    stdGen <- (arbitrary :: Gen StdGen)
+    stdGen <- arbitrary :: Gen StdGen
     names <- elements [["1", "2", "3"], ["1", "2", "3", "4"]]
     return $ toInitialGame $ evalRand (newGame names) stdGen
 
@@ -98,9 +98,15 @@ main = hspec spec
 
 spec :: Spec
 spec = do
+  gameInvariantSpec
+  gameStateReturningSpec
+  sampleGameSpec
+
+gameInvariantSpec :: Spec
+gameInvariantSpec = do
   describe "A new game" $ do
     it "should start in the Initial phase" $ property $
-      \g -> (view phase $ fromInitialGame (g :: InitialGame)) == Initial
+      \g -> view phase (fromInitialGame (g :: InitialGame)) == Initial
     it "must have either 3 or 4 players" $ property $
       \game -> let l = Map.size $ view players $ fromInitialGame (game :: InitialGame)
                in l == 3 || l == 4
@@ -115,7 +121,7 @@ spec = do
                in (n > 0) || (view phase game == End)
     it "has no duplicates in the validActions list" $ property $
       \game -> let vA = (game :: Game) ^. validActions
-               in vA == nub vA
+               in vA === nub vA
     it "has only valid actions in the validActions list" $ property $
       \game stdGen -> let vA = (game :: Game) ^. validActions
                           allExist = all (`playersExistFor'` game) vA
@@ -141,31 +147,26 @@ spec = do
              bldg' = fromJust bldg
              (g', _) = runGame (update purchase'') game (mkStdGen 0)
              newRes = g' ^. players . ix pI . resources
-         in newRes == oldRes <> mkNeg (cost (Building bldg'))
+         in newRes === oldRes <> mkNeg (cost (Building bldg'))
 
+gameStateReturningSpec :: Spec
+gameStateReturningSpec =
   describe "GameStateReturning functions" $ do
     let game = head randomGames
-    context "simpleOffers" $ do
+    let allValid ng f = let g = fromNormalGame ng
+                            pI = view currentPlayer g
+                            r' = mkStdGen 0
+                        in and $ evalGame (f pI >>= \x -> mapM isValid x) g r'
+    context "simpleOffers" $
       it "should not generate invalid actions" $ property $
-        \ng -> let r' = mkStdGen 0
-                   g = fromNormalGame ng
-                   pI = view currentPlayer g
-               in and $ evalGame (simpleOffers pI >>= \x -> mapM isValid x) g r'
-    context "possiblePurchases" $ do
+        \ng -> allValid ng simpleOffers
+    context "possiblePurchases" $
       it "should not generate invalid actions" $ property $
-        \ng -> let r' = mkStdGen 0
-                   g = fromNormalGame ng
-                   pI = view currentPlayer g
-                   exists = playersExist' [pI] g
-               in exists ==> and $ evalGame (possiblePurchases pI >>= \x -> mapM isValid x) g r'
-    context "possibleDevelopmentCards" $ do
+        \ng -> allValid ng possiblePurchases
+    context "possibleDevelopmentCards" $
       it "should not generate invalid actions" $ property $
-        \ng -> let r' = mkStdGen 0
-                   g = fromNormalGame ng
-                   pI = view currentPlayer g
-                   exists = playersExist' [pI] g
-               in  exists ==> and $ evalGame (possibleDevelopmentCards pI >>= \x -> mapM isValid x) g r'
-    context "possibleAccepts" $ do
+        \ng -> allValid ng possibleDevelopmentCards
+    context "possibleAccepts" $
       it "should generate accepts when an offer is present" $ property $ 
         \ng -> let g = fromNormalGame ng
                    openTrades' = g^.openTrades
@@ -190,13 +191,13 @@ spec = do
                    , set (players . ix (toPlayerIndex 2) . resources) mempty
                    , set openTrades [Offer offer']
                    ]
-      let offerGame = (foldr (.) id setAll) game
+      let offerGame = foldr (.) id setAll game
       let offerAndAcceptGame = set openTrades [Offer offer', accept'^?!action.trade] offerGame
       let getFromGame x g = evalGame x g (mkStdGen 0)
       let actionsFromGame = getFromGame possibleTradeActions
-      it "should generate an accept when offer is present" $ do
+      it "should generate an accept when offer is present" $
         actionsFromGame offerGame `shouldSatisfy` elem accept'
-      it "should generate a complete when offer and acceptance are present" $ do
+      it "should generate a complete when offer and acceptance are present" $
         actionsFromGame offerAndAcceptGame `shouldSatisfy` elem complete'
 
       let tradesFrom game' = getFromGame (use openTrades) (game' :: Game)
@@ -221,7 +222,7 @@ spec = do
                    ptas = evalGame possibleTradeActions g r'
                    allExist = all (`playersExistFor'` g) ptas
                in  allExist ==> all (\x -> evalGame (isValid x) g r') ptas
-    context "getCard" $ do
+    context "getCard" $
       it "should add a card to a player's newCards field" $ property $
         \ng -> let g = fromNormalGame ng
                    cardIs = views allCards head g
@@ -244,11 +245,13 @@ spec = do
                      , set (players . ix p1 . resources) mempty { lumber = 9 }
                      , set (players . ix p2 . resources) mempty { brick = 3 }
                      ]
-        let game' = (foldr (.) id setAll) game
+        let game' = foldr (.) id setAll game
         let discards = evalGame makeDiscards game' (mkStdGen 0)
         discards `shouldBe` [ mkDiscard (p0, mempty { ore = 4 })
                             , mkDiscard (p1, mempty { lumber = 4 })]
 
+sampleGameSpec :: Spec
+sampleGameSpec = do
   describe "An example game" $ do
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
     let gs = iterate (uncurry (runGame randomAct)) (initialGame, r')
