@@ -224,7 +224,10 @@ preconditions a@(PlayerAction playerIndex' action') = playersExistFor a : reqs
                                                            return $ validConstruct c (g ^. board)
                                                      in  maybeValid == Just True || isNothing maybeValid) (show x ++ " is valid on board") ]
                  Trade x -> case x of
-                   Offer offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
+                   Offer offer' -> [ phaseOneOf [Normal]
+                                   , hasResourcesFor (offer'^.offering) playerIndex'
+                                   , turnIs playerIndex'
+                                   , Precondition (\_ -> (offer'^.offering) /= (offer'^.asking)) "Offer and ask cannot be the same"]
                    Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
                    Reject {} -> [phaseOneOf [Normal]]
                    CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
