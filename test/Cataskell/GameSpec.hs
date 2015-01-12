@@ -170,15 +170,15 @@ gameStateReturningSpec =
       it "should generate accepts when an offer is present" $ property $ 
         \ng -> let g = fromNormalGame ng
                    openTrades' = g^.openTrades
-                   offer' = find (isJust . preview offer) openTrades'
-                   accepts' = filter isAccept openTrades'
+                   offer' = find (isJust . toOffer) openTrades'
+                   hasAcceptedAlready = filter isAccept openTrades'
                    f x = let ask' = x^?! offer.asking
                              asker' = x^?! offer.offeredBy
-                         in findValueWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
+                         in findKeyWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
                    hasEnough = fmap f offer'
                    oh = liftM2 (,) offer' (join hasEnough)
-                   allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'^.playerIndex] g) oh
-               in null accepts' && isJust offer' && isJust hasEnough && (allExist == Just True) ==> 
+                   allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'] g) oh
+               in null hasAcceptedAlready && allExist == Just True ==> 
                  let stdGen = mkStdGen 0
                      accepts'' = evalGame possibleAccepts g stdGen
                  in not $ null accepts''
