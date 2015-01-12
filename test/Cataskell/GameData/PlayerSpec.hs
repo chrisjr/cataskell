@@ -25,14 +25,13 @@ instance Arbitrary Player where
     let p = mkPlayer (i, color', name)
     r <- arbitrary
     return $ resources .~ r $ p
-  shrink p = tail $ Player <$> shrink' (_playerName p)
+  shrink p = tail $ Player <$> [_playerName p, ""]
                            <*> [_playerColor p]
                            <*> [_playerIndex p]
                            <*> [_resources p]
-                           <*> shrink' (filter (isNothing . preview itemType) $ _constructed p)
+                           <*> [filter (isNothing . preview itemType) $ _constructed p]
                            <*> [_newCards p]
                            <*> [_bonuses p]
-    where shrink' a = a : shrink a
 
 instance Arbitrary PlayerIndex where
   arbitrary = toPlayerIndex `fmap` elements [0..3]
@@ -42,8 +41,7 @@ instance Arbitrary (Map.Map PlayerIndex Player) where
     ps <- listOf arbitrary
     return . Map.fromList $ zip (map (view playerIndex) ps) ps
   shrink m = Map.fromList <$> shrink' (Map.toList m)
-    where shrink' []     = []
-          shrink' (x:xs) = [ x:xs' | xs' <- shrink xs ] ++ [ x':xs | x'  <- shrink x ]
+    where shrink' xs = [map (last . shrink) xs]
 
 main :: IO ()
 main = hspec spec

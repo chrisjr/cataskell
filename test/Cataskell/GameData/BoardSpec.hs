@@ -20,7 +20,6 @@ import Control.Lens hiding (elements)
 import Control.Monad
 import Control.Monad.Random
 import Control.Applicative ((<$>), (<*>))
-import Control.Arrow ((&&&))
 
 import Cataskell.GameData.LocationSpec()
 import Cataskell.GameData.BasicsSpec ()
@@ -102,7 +101,6 @@ instance Arbitrary RTBoard where
     where b = fromRTBoard rt
           shrink' a = a : shrink a
 
-
 main :: IO ()
 main = hspec spec
 
@@ -125,9 +123,6 @@ hexCenterSpec =
       (evaluate . force) (mkHexCenter Mountain 7) `shouldThrow` (const True :: Selector AssertionFailed)
     it "can be generated satisfying this requirement" $ property $
       \hc -> (_terrain (hc :: HexCenter) == Desert) == (_roll hc == 7)
-
-counts :: (Eq k, Ord k) => [k] -> Map.Map k Int
-counts = Map.fromList . map (head &&& length) . group . sort
 
 hexMapSpec :: Spec
 hexMapSpec = do
@@ -265,26 +260,25 @@ functionsSpec = do
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
-    let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top,
-              Point (2, -3) Bottom, Point (2,-2) Top]
-    let psShort = [Point (0,-1) Top, Point (1,-2) Bottom, Point (1,-1) Top]
+    let ps = [Point (0, -3) Bottom, Point (-1,-1) Top, Point (1,-2) Bottom, Point (-2,0) Top,
+              Point (-2, -1) Bottom, Point (-3,-1) Top]
     let es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
-    let esShort = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 psShort
-    let mkRoadMap es' color' = Map.fromList $ zip es (map (\e -> Just $ OnEdge e color') es')
     it "should return the color of the player with the longest road and its length" $ do
-      let blueRoads = mkRoadMap esShort Blue
       let blueLongest = Map.union blueRoads roads'
       let blueLongestBoard = board' { _roads = blueLongest }
       longestRoad blueLongestBoard `shouldBe` (Blue, 3)
+    it "should return a different longest road when a longer road appears" $ do
       let redRoads = mkRoadMap es Red
-      let redLongest = Map.union redRoads blueLongest
+      let redLongest = Map.unions [redRoads, blueRoads, roads']
       let redLongestBoard = board' { _roads = redLongest }
       longestRoad redLongestBoard `shouldBe` (Red, 5)
     it "should not count roads interrupted by enemy settlements" $ do
       let whiteRoads = mkRoadMap es White
-      let whiteLongest = Map.union whiteRoads roads'
+      let whiteLongestRoads = Map.union whiteRoads roads'
+      let whiteLongest = board' { _roads = whiteLongestRoads }
+      longestRoad whiteLongest `shouldBe` (White, 5)
       let p = ps !! 4 
-      let interruption = Map.union (Map.singleton p (Just $ OnPoint p Red Settlement)) emptyBuildingMap
-      let whiteLongestInterrupted = board' { _roads = whiteLongest, _buildings = interruption }
+      let interruption = Map.union (interruptSettlement p) emptyBuildingMap
+      let whiteLongestInterrupted = board' { _roads = whiteLongestRoads, _buildings = interruption }
       longestRoad whiteLongestInterrupted `shouldBe` (White, 3)
 

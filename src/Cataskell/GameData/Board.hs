@@ -271,7 +271,7 @@ validRoadsFor color' board'
         freeEdges' = freeEdges board'
         pointsAdjacent e = filter (`elem` myPoints) [point1 e, point2 e]
         notEnemy ps | length ps == 1 = head ps `notElem` enemyPoints -- if only one endpoint belongs to me, can't build
-                    | length ps == 2 = True -- if endpoints belong to me, I can build even though the enemy is there
+                    | length ps == 2 = True -- if both endpoints belong to me, I can build even though the enemy is there
                     | otherwise = False
         validEdges = filter (notEnemy . pointsAdjacent) freeEdges'
     in map (\e -> built (road $ Just (e, color'))) validEdges

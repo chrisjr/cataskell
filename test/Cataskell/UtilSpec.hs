@@ -48,6 +48,10 @@ spec = do
       let n = 1000000
       iterate' (+1) 0 !! n `shouldBe` n
   
+  describe "counts" $
+    it "should return Map a Int of frequencies" $ do
+      counts [1,1,3,5] `shouldBe` Map.fromList [(1,2),(3,1),(5,1)]
+
   let getFirst m = let f' = listToMaybe $ Map.toList m
                        k' = fst `fmap` f'
                        v' = snd `fmap` f'

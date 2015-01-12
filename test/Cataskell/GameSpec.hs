@@ -12,10 +12,10 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromJust, isJust, mapMaybe)
+import qualified Data.Set as Set
+import Data.Maybe (fromJust, isJust, isNothing, mapMaybe)
 import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
-import Control.Arrow ((&&&))
 import Control.Lens hiding (elements)
 import Cataskell.Util
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
@@ -65,20 +65,21 @@ instance Arbitrary Game where
   shrink g = tail $ Game <$> [_phase g]
                     <*> shrink' (_board g)
                     <*> shrinkPlayers
-                    <*> shrink' (_currentPlayer g)
-                    <*> shrink' (_turnAdvanceBy g)
+                    <*> [_currentPlayer g]
+                    <*> [0] -- turnadvance
                     <*> shrink' (_rolled g)
                     <*> shrink' (_validActions g)
-                    <*> shrink' (_openTrades g)
-                    <*> shrink' (_lastAction g)
+                    <*> [_openTrades g]
+                    <*> [Nothing] -- lastAction
                     <*> shrink' (_allCards g)
                     <*> shrink' (_winner g)
     where shrink' a = a : shrink a
-          shrinkPlayers = let tradePs = concatMap playersReferencedInTrade $ filter (not . isReject) (_openTrades g)
-                              lst = tradePs ++ concatMap playersReferenced (_validActions g)
-                              necessary = Map.filterWithKey (\k _ -> k `elem` lst) (_players g)
-                          in if ((_players g) /= necessary) then shrink' (_players g) ++ shrink necessary else shrink' necessary
-
+          onlyReal = filter (isNothing . preview itemType)
+          shrinkPlayers = let tradePs = foldr (Set.union . playersReferencedInTrade) Set.empty $ filter (not . isReject) (_openTrades g)
+                              ps = foldr (Set.union . playersReferenced) tradePs (_validActions g)
+                              necessaryPlayers = Map.filterWithKey (\k _ -> k `Set.member` ps) (_players g)
+                              needed = over (mapped.constructed) onlyReal necessaryPlayers
+                          in  if Map.size (_players g) /= Map.size needed then [_players g, needed] else [needed]
 
 instance Arbitrary NormalGame where
   arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
@@ -108,7 +109,6 @@ spec = do
                           i' = evalRand (evalStateT (findPlayerByColor Blue) g') (stdGen :: StdGen)
                           i = fromPlayerIndex i'
                           in i >= 0 && i < 4
-
   describe "Game invariants" $ do
     it "has a non-zero list of next actions, unless at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to length
@@ -123,10 +123,10 @@ spec = do
                       in allExist ==> all isValid' vA
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores' = evalGame scores game (mkStdGen 0)
-                   highestCount = last . map (head &&& length) . group $ sort scores'
+                   highestCount = Map.findMax $ counts scores'
                in  (fst highestCount < 10) || (snd highestCount == 1)
     it "should have only non-negative resource counts" $ property $
-      \game -> let res' = evalGame (use players >>= (return . Map.map (^.resources))) game (mkStdGen 0)
+      \game -> let res' = evalGame (liftM (Map.map (^.resources)) (use players)) game (mkStdGen 0)
                in  all nonNegative $ Map.elems res'
     it "should deduct resources when a valid purchase is made" $ property $
       \ng pI -> 

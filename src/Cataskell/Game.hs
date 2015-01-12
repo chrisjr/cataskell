@@ -8,6 +8,8 @@ import Control.Monad.State
 import Control.Exception (assert)
 import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Control.Applicative ((<$>), (<*>))
 import Data.Either
 import Data.Monoid (mempty, (<>))
@@ -124,27 +126,31 @@ isValid action' = do
 phaseOneOf :: [Phase] -> Precondition Game
 phaseOneOf phases = Precondition { predicate = flip elem phases . view phase, label = "phase one of: " ++ (show phases) } 
 
+playersExist'' :: Set PlayerIndex -> Game -> Bool
+playersExist'' pIs g = let keys = Map.keysSet (g^.players)
+                       in pIs `Set.isSubsetOf` keys
+
 playersExist' :: [PlayerIndex] -> Game -> Bool
-playersExist' pIs g = all (`Map.member` (g^.players)) pIs
+playersExist' pIs = playersExist'' (Set.fromList pIs)
 
-playersReferencedInTrade :: TradeAction -> [PlayerIndex]
+playersReferencedInTrade :: TradeAction -> Set PlayerIndex
 playersReferencedInTrade x
-  = case x of
-      Offer offer' -> [offer'^.offeredBy]
-      Accept offer' accepter' -> [offer'^.offeredBy, accepter']
-      Reject offer' rejecter' _ -> [offer'^.offeredBy, rejecter']
-      CompleteTrade offer' accepter' -> [offer'^.offeredBy, accepter']
-      CancelTrade offer' -> [offer'^.offeredBy]
-      Exchange offer' -> [offer'^.offeredBy]
+  = Set.fromList $ case x of
+                     Offer offer' -> [offer'^.offeredBy]
+                     Accept offer' accepter' -> [offer'^.offeredBy, accepter']
+                     Reject offer' rejecter' _ -> [offer'^.offeredBy, rejecter']
+                     CompleteTrade offer' accepter' -> [offer'^.offeredBy, accepter']
+                     CancelTrade offer' -> [offer'^.offeredBy]
+                     Exchange offer' -> [offer'^.offeredBy]
 
-playersReferenced :: GameAction -> [PlayerIndex]
-playersReferenced (PlayerAction actor' act') = nub $ actor':fromAct
+playersReferenced :: GameAction -> Set PlayerIndex
+playersReferenced (PlayerAction actor' act') = Set.union (Set.singleton actor') fromAct
   where fromAct = case act' of
                     Trade x -> playersReferencedInTrade x
-                    _ -> []
+                    _ -> Set.empty
 
 playersExistFor' :: GameAction -> Game -> Bool
-playersExistFor' = playersExist' . playersReferenced
+playersExistFor' = playersExist'' . playersReferenced
 
 playersExistFor :: GameAction -> Precondition Game
 playersExistFor a = Precondition { predicate = playersExistFor' a, label = "All players referenced by " ++ show a }

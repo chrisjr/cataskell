@@ -2,6 +2,8 @@
 module Cataskell.Util where
 
 import qualified Data.Map.Strict as Map
+import Control.Arrow ((&&&))
+import Data.List (group, sort)
 import Data.Maybe (listToMaybe)
 
 instance (Num a, Num b) => Num (a,b) where
@@ -26,6 +28,9 @@ listToDuple _ = Nothing
 
 iterate' :: (a -> a) -> a -> [a]
 iterate' f x = x `seq` (x : iterate' f (f x))
+
+counts :: (Eq k, Ord k) => [k] -> Map.Map k Int
+counts = Map.fromList . map (head &&& length) . group . sort
 
 findKeyValueWhere :: (k -> a -> Bool) -> Map.Map k a -> Maybe (k, a)
 findKeyValueWhere f m = listToMaybe . Map.toList $ Map.filterWithKey f m
