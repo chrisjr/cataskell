@@ -49,8 +49,18 @@ toNormalGame x | x ^. phase == Normal = NormalGame x
 fromNormalGame :: NormalGame -> Game
 fromNormalGame (NormalGame x) = x
 
+newtype TradeGame = TradeGame Game
+  deriving (Eq, Ord, Show, Read)
+
+toTradeGame :: Game -> TradeGame
+toTradeGame x | x ^. phase == Normal && not (Set.null (x^.openTrades)) = TradeGame x
+              | otherwise = error "No trades"
+
+fromTradeGame :: TradeGame -> Game
+fromTradeGame (TradeGame x) = x
+
 mkSteps :: (RandomGen g) => Rand g Int
-mkSteps = getRandomR (0, 500)
+mkSteps = getRandomR (0, 200)
 
 mkGame :: (RandomGen g) => Rand g Game
 mkGame = do
@@ -60,7 +70,7 @@ mkGame = do
   foldM (\acc _ -> (execStateT randomAct) acc) initialG [0..steps]
 
 mkGames :: (RandomGen g) => Rand g [Game]
-mkGames = replicateM 100 mkGame
+mkGames = replicateM 200 mkGame
 
 randomGames :: [Game]
 randomGames = evalRand mkGames (mkStdGen 1)
@@ -93,6 +103,10 @@ instance Arbitrary Game where
 instance Arbitrary NormalGame where
   arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
   shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
+
+instance Arbitrary TradeGame where
+  arbitrary = TradeGame <$> elements (filter (\g -> (g^.phase == Normal) && not (Set.null (g^.openTrades))) randomGames)
+  -- shrink tg = map toTradeGame $ shrink $ fromTradeGame tg
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -220,13 +234,13 @@ gameStateReturningSpec =
                           in (offer', hasRepliedAlready)
     context "possibleAccepts" $
       it "should generate accepts when an offer is present and others can fulfill it" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng
+        \(Blind tg) -> let g = fromTradeGame tg
                            (_, hasRepliedAlready) = getHasReplied g 
                        in checkIfValidOffer g && Set.null hasRepliedAlready ==> 
                          toJS g $ checkForPossibleTrade isAccept g
     context "possibleRejects" $
       it "should generate rejects when an offer is present, for all except offerer" $ property $ 
-        \(Blind ng) -> let g = fromNormalGame ng
+        \(Blind tg) -> let g = fromTradeGame tg
                            (offer', hasRepliedAlready) = getHasReplied g
                        in Set.null hasRepliedAlready && isJust offer' ==> 
                          let stdGen = mkStdGen 0
@@ -235,7 +249,7 @@ gameStateReturningSpec =
                          in toJS g $ otherPlayers' == mapSetMaybe (^?action.trade.rejecter) rejects''
     context "possibleCompletes" $
       it "should always generate a complete when accepts are present" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade isAccept (g :: Game) ==>
+        \(Blind tg) -> let g = fromTradeGame tg in checkIfOpenTrade isAccept (g :: Game) ==>
           toJS g $ checkForPossibleTrade isComplete g
     let game = head $ filter ((== Normal) . (^.phase)) randomGames
     context "possibleTradeActions" $ do
@@ -255,14 +269,16 @@ gameStateReturningSpec =
       it "should generate a complete when offer and acceptance are present" $
         actionsFromGame offerAndAcceptGame `shouldSatisfy` Set.member complete'
       it "should never have an accept and reject by the same player" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade (isJust . toOffer) g ==> 
-          let trades' = tradesFrom g
+        \(Blind tg) -> 
+          let g = fromTradeGame tg
+              trades' = tradesFrom g
               rejecters = Set.map (^?!rejecter) $ Set.filter isReject trades'
               accepters = Set.map (^?!accepter) $ Set.filter isAccept trades'
           in  toJS g $ Set.null (accepters `Set.intersection` rejecters)
       it "should never have an offer and an accept/reject by the same player" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade (isJust . toOffer) g ==> 
-          let trades' = tradesFrom g
+        \(Blind tg) -> 
+          let g = fromTradeGame tg
+              trades' = tradesFrom g
               offerer = mapSetMaybe (^?offer.offeredBy) trades'
               rejecters = Set.map (^?!rejecter) $ Set.filter isReject trades'
               accepters = Set.map (^?!accepter) $ Set.filter isAccept trades'
