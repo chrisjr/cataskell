@@ -19,7 +19,7 @@ import Data.Maybe (fromJust, isJust, isNothing, mapMaybe)
 import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
-import Data.Aeson
+import Data.Aeson (ToJSON, encode)
 import qualified Data.ByteString.Lazy.Char8 as B
 import Cataskell.Util
 import Cataskell.Serialize()
@@ -113,6 +113,9 @@ p1 = toPlayerIndex 1
 
 p2 :: PlayerIndex
 p2 = toPlayerIndex 2
+
+p3 :: PlayerIndex
+p3 = toPlayerIndex 3
 
 main :: IO ()
 main = hspec spec
@@ -285,6 +288,7 @@ gameStateReturningSpec =
         let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
                      , set (players . ix p1 . resources) mempty { lumber = 9 }
                      , set (players . ix p2 . resources) mempty { brick = 3 }
+                     , set (players . ix p3 . resources) mempty
                      ]
         let game' = foldr (.) id setAll game
         let discards = evalGame makeDiscards game' (mkStdGen 0)

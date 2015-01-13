@@ -10,6 +10,7 @@ import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 import Control.Applicative ((<$>), (<*>))
 import Data.Maybe (isNothing)
+import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Control.Lens hiding (elements)
 import Control.Exception (assert)
@@ -36,7 +37,7 @@ instance Arbitrary Player where
 instance Arbitrary PlayerIndex where
   arbitrary = toPlayerIndex `fmap` elements [0..3]
 
-instance Arbitrary (Map.Map PlayerIndex Player) where
+instance Arbitrary (Map PlayerIndex Player) where
   arbitrary = do
     ps <- listOf arbitrary
     return . Map.fromList $ zip (map (view playerIndex) ps) ps
@@ -75,3 +76,6 @@ spec = do
       view devCards p2 `shouldBe` [VictoryPoint]
     it "must have only non-negative resources" $ property $ do
       \player -> nonNegative $ view resources (player :: Player)
+  describe "A Map PlayerIndex Player" $
+    it "should have keys matching the PlayerIndex stored in the player object" $ property $
+      \pmap -> all (\(pI, p) -> pI == (p^.playerIndex)) $ Map.toList (pmap :: Map PlayerIndex Player)
