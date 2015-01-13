@@ -13,8 +13,8 @@ import qualified Data.Set as Set
 import Control.Applicative ((<$>), (<*>), (<|>))
 import Data.Either
 import Data.Monoid (mempty, (<>))
-import Data.Maybe (fromJust, isJust, isNothing, catMaybes, mapMaybe, listToMaybe)
-import Data.List (find, elemIndex, nub)
+import Data.Maybe
+import Data.List (elemIndex, nub)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -444,7 +444,7 @@ doInvention playerIndex' (InventionOf res) = do
 doMoveRobber :: (RandomGen g) => MoveRobber -> GameState g
 doMoveRobber (MoveRobber dest) = do
   h <- use (board . hexes)
-  let (robberLoc, _) = fromJust $ find (_hasRobber . snd) $ Map.toList h
+  let robberLoc = fromJust $ findKeyWhere _hasRobber h
   board . hexes . ix robberLoc . hasRobber .= False
   board . hexes . ix dest . hasRobber .= True
   backToNormal
@@ -516,12 +516,20 @@ extantAccepts = do
 possibleAccepts :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleAccepts = do
   offer' <- openOffer
-  if isJust offer'
-  then do
-    let offer'' = fromJust offer'
-    acceptances <- mkAccept offer''
-    return acceptances
-  else return Set.empty
+  maybe (return Set.empty) mkAccept offer' 
+
+otherPlayers :: (RandomGen g) => GameStateReturning g (Map.Map PlayerIndex Player)
+otherPlayers = do
+  current <- use currentPlayer
+  uses players (Map.filter ((/= current) . view playerIndex))
+
+mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g (Set GameAction)
+mkAccept offer' = do
+  ps <- otherPlayers
+  cannotReply <- cannotReplyToTrade
+  let ps' = Map.filter (sufficient (offer'^.asking) . view resources) ps
+  let couldAccept = Map.keysSet ps'
+  return $ Set.map (accept offer') (couldAccept Set.\\ cannotReply)
 
 possibleRejects :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleRejects = do
@@ -530,7 +538,7 @@ possibleRejects = do
   otherIs <- liftM Map.keysSet otherPlayers
   let otherIs' = otherIs Set.\\ cannotReply
   let rejects = fmap (\x -> Set.map (reject x Nothing) otherIs') offer'
-  return $ maybe Set.empty id rejects
+  return $ fromMaybe Set.empty rejects
 
 originatedWith :: TradeOffer -> PlayerIndex -> Bool
 originatedWith offer' playerIndex' = (offer'^.offeredBy) == playerIndex'
@@ -565,19 +573,6 @@ possibleTradeActions = do
     let cancels = Set.fromList [cancel offer'' | offer''^.offeredBy == currentPlayer']
     return $ Set.unions [accepts', rejects', completes', cancels]
   else return base
-
-otherPlayers :: (RandomGen g) => GameStateReturning g (Map.Map PlayerIndex Player)
-otherPlayers = do
-  current <- use currentPlayer
-  uses players (Map.filter ((/= current) . view playerIndex))
-
-mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g (Set GameAction)
-mkAccept offer' = do
-  ps <- otherPlayers
-  cannotReply <- cannotReplyToTrade
-  let ps' = Map.filter (sufficient (offer'^.asking) . view resources) ps
-  let couldAccept = Map.keysSet ps'
-  return $ Set.map (accept offer') (couldAccept Set.\\ cannotReply)
 
 possibleDevelopmentCards :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleDevelopmentCards = do

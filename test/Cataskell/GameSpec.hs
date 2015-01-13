@@ -187,13 +187,16 @@ gameStateReturningSpec =
       it "should return a map excluding the current player" $ property $
         \(Blind g) -> let current = g^.currentPlayer
                           others = Map.keysSet $ evalGame otherPlayers g (mkStdGen 0)
-                      in toJS g $ current `Set.notMember` others
+                      in toJS g $ others == Map.keysSet (g^.players) Set.\\ Set.singleton current
+    
+    let getHasReplied g = let openTrades' = g^.openTrades
+                              offer' = firstMaybe $ mapSetMaybe toOffer openTrades'
+                              hasRepliedAlready = Set.filter (\x -> isReject x || isAccept x) openTrades'
+                          in (offer', hasRepliedAlready)
     context "possibleAccepts" $
       it "should generate accepts when an offer is present and others can fulfill it" $ property $ 
         \(Blind ng) -> let g = fromNormalGame ng
-                           openTrades' = g^.openTrades
-                           offer' = firstMaybe $ mapSetMaybe toOffer openTrades'
-                           hasRepliedAlready = Set.filter (\x -> isReject x || isAccept x) openTrades'
+                           (offer', hasRepliedAlready) = getHasReplied g
                            f x = let ask' = x ^. asking
                                      asker' = x ^. offeredBy
                                  in findKeyWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
@@ -204,6 +207,15 @@ gameStateReturningSpec =
                          let stdGen = mkStdGen 0
                              accepts'' = evalGame possibleAccepts g stdGen
                          in toJS g $ not $ Set.null accepts''
+    context "possibleRejects" $
+      it "should generate rejects when an offer is present, for all except offerer" $ property $ 
+        \(Blind ng) -> let g = fromNormalGame ng
+                           (offer', hasRepliedAlready) = getHasReplied g
+                       in Set.null hasRepliedAlready && isJust offer' ==> 
+                         let stdGen = mkStdGen 0
+                             rejects'' = evalGame possibleRejects g stdGen
+                             otherPlayers' = Map.keysSet (g^.players) Set.\\ Set.singleton (g^.currentPlayer)
+                         in toJS g $ otherPlayers' == mapSetMaybe (^?action.trade.rejecter) rejects''
 
     let game = head randomGames
     context "possibleTradeActions" $ do
