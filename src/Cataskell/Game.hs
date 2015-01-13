@@ -48,8 +48,8 @@ data Game = Game
   , _currentPlayer :: PlayerIndex
   , _turnAdvanceBy :: Int
   , _rolled :: Maybe Int
-  , _validActions :: [GameAction]
-  , _openTrades :: [TradeAction]
+  , _validActions :: Set GameAction
+  , _openTrades :: Set TradeAction
   , _lastAction :: Maybe (GameAction, Bool)
   , _allCards :: [DevelopmentCard]
   , _winner :: Maybe PlayerIndex
@@ -70,8 +70,8 @@ newGame pNames = do
               , _currentPlayer = toPlayerIndex 0
               , _turnAdvanceBy = 1
               , _rolled = Nothing
-              , _validActions = possibleInitialSettlements (head $ Map.elems ps) b
-              , _openTrades = []
+              , _validActions = Set.fromList $ possibleInitialSettlements (head $ Map.elems ps) b
+              , _openTrades = Set.empty
               , _lastAction = Nothing
               , _allCards = cards
               , _winner = Nothing }
@@ -256,7 +256,7 @@ doAction act'
               when (totalSettlements == 2) $ giveStartingResources actorIndex
               let c'' = fromJust $ c' ^? onPoint
               newRoads <- uses (board.roads) (initialRoadsFor player'' c'')
-              validActions .= newRoads
+              validActions .= Set.fromList newRoads
           SpecialAction x -> case x of
             M monopoly' -> doMonopoly actorIndex monopoly'
             I invention' -> doInvention actorIndex invention'
@@ -353,16 +353,16 @@ transferCards pI = do
 doTrade :: (RandomGen g) => PlayerIndex -> TradeAction -> GameState g
 doTrade playerIndex' tradeAction'
   = case tradeAction' of
-      Offer _ -> openTrades <>= [tradeAction']
-      Accept _ _ -> openTrades <>= [tradeAction']
-      Reject{} -> openTrades <>= [tradeAction']
+      Offer _ -> openTrades <>= Set.singleton tradeAction'
+      Accept _ _ -> openTrades <>= Set.singleton tradeAction'
+      Reject{} -> openTrades <>= Set.singleton tradeAction'
       CompleteTrade offer' accepterIndex' -> do
         addToResources playerIndex' (offer'^.asking)
         addToResources playerIndex' (mkNeg $ offer'^.offering)
         addToResources accepterIndex' (offer'^.offering)
         addToResources accepterIndex' (mkNeg $ offer'^.asking)
-        openTrades .= []
-      CancelTrade _ -> openTrades .= []
+        openTrades .= Set.empty
+      CancelTrade _ -> openTrades .= Set.empty
       Exchange offer' -> doExchange playerIndex' offer'
 
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
@@ -393,7 +393,7 @@ doDiscard playerIndex' (DiscardAction _ r) = do
   addToResources playerIndex' (mkNeg r)
   discards <- makeDiscards
   validActions .= discards
-  when (null discards) $ do
+  when (Set.null discards) $ do
     pI <- use currentPlayer
     toSpecialPhase MovingRobber pI
 
@@ -455,9 +455,9 @@ genPlayerActions = do
   purchases' <- possiblePurchases currentPlayerIndex
   trades <- possibleTradeActions currentPlayerIndex
   cardsToPlay <- possibleDevelopmentCards currentPlayerIndex
-  validActions .= purchases' ++ trades ++ cardsToPlay ++ [mkEndTurn currentPlayerIndex]
+  validActions .= Set.unions [purchases', trades, cardsToPlay, Set.singleton (mkEndTurn currentPlayerIndex)]
 
-possiblePurchases :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possiblePurchases :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
 possiblePurchases playerIndex' = do
   player' <- preuse (players.ix playerIndex')
   b <- use board
@@ -467,43 +467,41 @@ possiblePurchases playerIndex' = do
     let roads' = validRoadsFor (color player'') b
     let settlements' = validSettlementsFor (color player'') b
     let cities' = validCitiesFor (color player'') b
-    let buildings' = concat [roads', settlements', cities']
+    let buildings' = Set.fromList $ concat [roads', settlements', cities']
     let res = view resources player''
-    let possibleBuildings = filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
-    let cards' = if sufficient res (cost $ Potential DevelopmentCard)
-                 then [purchase playerIndex' (Potential DevelopmentCard)]
-                 else []
+    let possibleBuildings = Set.filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
+    let cards' = Set.fromList [purchase playerIndex' (Potential DevelopmentCard) | sufficient res (cost $ Potential DevelopmentCard)]
     let mkPurchase = purchase playerIndex' . Building
-    return $ cards' ++ map mkPurchase possibleBuildings
-  else return []
+    return $ Set.union cards' (Set.map mkPurchase possibleBuildings)
+  else return Set.empty
 
-simpleOffers :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+simpleOffers :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
 simpleOffers playerIndex' = do
   pRes <- resourcesOf playerIndex'
   let singles = resCombinationsForTotal 1
   let canOffer = filter (sufficient pRes) singles
   let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> singles
-  return offers
+  return $ Set.fromList offers
 
 canReplyToTrade :: (RandomGen g) => GameStateReturning g (GameAction -> Bool)
 canReplyToTrade = do
   openTrades' <- use openTrades
-  let existingAccepts = filter isAccept openTrades'
-  let existingRejects = filter isReject openTrades'
-  let alreadyReplied = mapMaybe (^? rejecter) existingRejects ++ mapMaybe (^? accepter) existingAccepts
-  return $ \a -> (a^.actor) `notElem` alreadyReplied
+  let existingAccepts = Set.filter isAccept openTrades'
+  let existingRejects = Set.filter isReject openTrades'
+  let alreadyReplied = Set.union (Set.map (^?accepter) existingAccepts) (Set.map (^?rejecter) existingRejects)
+  return $ \a -> (Just (a^.actor)) `Set.notMember` alreadyReplied
 
 openOffer :: (RandomGen g) => GameStateReturning g (Maybe TradeOffer)
 openOffer = do
   openTrades' <- use openTrades
-  return $ listToMaybe $ mapMaybe toOffer openTrades'
+  return $ firstMaybe $ mapSetMaybe toOffer openTrades'
 
-extantAccepts :: (RandomGen g) => GameStateReturning g [TradeAction]
+extantAccepts :: (RandomGen g) => GameStateReturning g (Set TradeAction)
 extantAccepts = do
   openTrades' <- use openTrades
-  return $ filter isAccept openTrades'
+  return $ Set.filter isAccept openTrades'
 
-possibleAccepts :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleAccepts :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleAccepts = do
   offer' <- openOffer
   canReply <- canReplyToTrade
@@ -511,21 +509,21 @@ possibleAccepts = do
   then do
     let offer'' = fromJust offer'
     acceptances <- mkAccept offer''
-    return $ filter canReply acceptances
-  else return []
+    return $ Set.filter canReply acceptances
+  else return Set.empty
 
-possibleRejects :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleRejects :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleRejects = do
   offer' <- openOffer
   canReply <- canReplyToTrade
-  otherIs <- liftM Map.keys otherPlayers
-  let rejects = fmap (\x -> map (reject x Nothing) otherIs) offer'
-  return $ maybe [] (filter canReply) rejects
+  otherIs <- liftM Map.keysSet otherPlayers
+  let rejects = fmap (\x -> Set.map (reject x Nothing) otherIs) offer'
+  return $ maybe Set.empty (Set.filter canReply) rejects
 
 originatedWith :: TradeOffer -> PlayerIndex -> Bool
 originatedWith offer' playerIndex' = (offer'^.offeredBy) == playerIndex'
 
-possibleCompletes :: (RandomGen g) => GameStateReturning g [GameAction]
+possibleCompletes :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleCompletes = do
   offer' <- openOffer
   if isJust offer'
@@ -534,14 +532,14 @@ possibleCompletes = do
     currentPlayer' <- use currentPlayer
     extantAccepts' <- extantAccepts
     let canReply = originatedWith offer'' currentPlayer'
-    completes' <- forM extantAccepts' $ \x -> do
+    completes' <- forM (Set.toList extantAccepts') $ \x -> do
       let accepter' = x ^?! accepter
       enoughResources <- checkResourcesForCompleteTrade offer'' accepter'
       return $ if enoughResources && canReply then complete x else Nothing
-    return $ catMaybes completes'
-  else return []
+    return $ Set.fromList $ catMaybes completes'
+  else return Set.empty
 
-possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
 possibleTradeActions playerIndex' = do
   base <- simpleOffers playerIndex'
   offer' <- openOffer
@@ -551,8 +549,8 @@ possibleTradeActions playerIndex' = do
     accepts' <- possibleAccepts
     rejects' <- possibleRejects
     completes' <- possibleCompletes
-    let cancels = if offer''^.offeredBy == playerIndex' then [cancel offer''] else []
-    return $ accepts' ++ rejects' ++ completes' ++ cancels
+    let cancels = Set.fromList [cancel offer'' | offer''^.offeredBy == playerIndex']
+    return $ Set.unions [accepts', rejects', completes', cancels]
   else return base
 
 otherPlayers :: (RandomGen g) => GameStateReturning g (Map.Map PlayerIndex Player)
@@ -560,23 +558,23 @@ otherPlayers = do
   current <- use currentPlayer
   uses players (Map.filter ((/= current) . view playerIndex))
 
-mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g [GameAction]
+mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g (Set GameAction)
 mkAccept offer' = do
   ps <- otherPlayers
   let ps' = Map.filter (sufficient (offer'^.asking) . view resources) ps
-  let couldAccept = Map.keys ps'
-  return $ map (accept offer') couldAccept
+  let couldAccept = Map.keysSet ps'
+  return $ Set.map (accept offer') couldAccept
 
-possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
 possibleDevelopmentCards playerIndex' = do
   items' <- inventory playerIndex'
-  let cards' = (filter (/= VictoryPoint) . mapMaybe (^? card)) `fmap` items'
-  return $ maybe [] (map (mkPlayCard playerIndex')) cards'
+  let cards' = (Set.fromList . filter (/= VictoryPoint) . mapMaybe (^? card)) `fmap` items'
+  return $ maybe Set.empty (Set.map (mkPlayCard playerIndex')) cards'
 
-canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g [GameAction]
+canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
 canMoveRobberTo playerIndex' = do
   robberSpots <- robbableSpotsFor playerIndex'
-  return $ map (mkMoveRobber playerIndex') robberSpots
+  return $ Set.fromList $ map (mkMoveRobber playerIndex') robberSpots
 
 neighborBuildings :: (RandomGen g) => CentralPoint -> GameStateReturning g [OnPoint]
 neighborBuildings cp = do
@@ -617,13 +615,13 @@ progress = do
                 turnAdvanceBy .= 1
                 initialToNormal
                else do
-                 switchToPlayer next' nextActionsIfInitial
+                 switchToPlayer next' (Set.fromList nextActionsIfInitial)
                  turnAdvanceBy .= newAdv (fromPlayerIndex next')
-    Normal -> switchToPlayer next' [rollFor next']
+    Normal -> switchToPlayer next' (Set.singleton (rollFor next'))
     Special _ -> return () -- if progress called in a special phase, do nothing
     End -> return ()
 
-switchToPlayer :: (RandomGen g) => PlayerIndex -> [GameAction] -> GameState g
+switchToPlayer :: (RandomGen g) => PlayerIndex -> (Set GameAction) -> GameState g
 switchToPlayer i valids = do
   currentPlayer .= i
   validActions .= valids
@@ -653,7 +651,7 @@ distributeResources = do
 initialToNormal :: (RandomGen g) => GameState g
 initialToNormal = do
   phase .= Normal
-  validActions .= [rollFor (toPlayerIndex 0)]
+  validActions .= Set.singleton (rollFor (toPlayerIndex 0))
 
 backToNormal :: (RandomGen g) => GameState g
 backToNormal = do
@@ -663,28 +661,28 @@ backToNormal = do
 toSpecialPhase :: (RandomGen g) => SpecialPhase -> PlayerIndex -> GameState g
 toSpecialPhase special' playerIndex' = do
   phase .= Special special'
-  openTrades .= []
+  openTrades .= Set.empty
   case special' of
       FreeRoads _ -> do
         color' <- preuses (players.ix playerIndex') color
         when (isJust color') $ do
           let color'' = fromJust color'
-          possibleRoads <- uses board (validRoadsFor color'')
-          validActions .= map (mkFree playerIndex') possibleRoads
+          possibleRoads <- uses board (Set.fromList . validRoadsFor color'')
+          validActions .= Set.map (mkFree playerIndex') possibleRoads
       RobberAttack -> do -- ^ If no one has more than 7 resources, move on to MovingRobber.
         mustDiscard <- makeDiscards
-        if not $ null mustDiscard
+        if not $ Set.null mustDiscard
         then validActions .= mustDiscard
         else toSpecialPhase MovingRobber playerIndex'
       MovingRobber -> do
         robberMoves <- canMoveRobberTo playerIndex'
-        if null robberMoves
+        if Set.null robberMoves
         then backToNormal
         else validActions .= robberMoves
-      Inventing -> validActions .= map (invent playerIndex') possibleInventions
-      Monopolizing -> validActions .= map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
+      Inventing -> validActions .= Set.fromList (map (invent playerIndex') possibleInventions)
+      Monopolizing -> validActions .= Set.fromList (map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies)
 
-makeDiscards :: (RandomGen g) => GameStateReturning g [GameAction]
+makeDiscards :: (RandomGen g) => GameStateReturning g (Set GameAction)
 makeDiscards = do
   ps <- use players
   let pRes = Map.map (^. resources) ps
@@ -692,8 +690,8 @@ makeDiscards = do
   let listDiscards p r = let total' = totalResources r `div` 2
                              rs = resCombinationsForTotal total'
                          in  zip (repeat p) $ filter (sufficient r) rs
-  let pDiscards = concat . Map.elems $ Map.mapWithKey listDiscards pMustDiscard
-  return $ map mkDiscard pDiscards
+  let pDiscards = Set.fromList . concat . Map.elems $ Map.mapWithKey listDiscards pMustDiscard
+  return $ Set.map mkDiscard pDiscards
 
 -- | Game won by player p.
 wonBy :: (RandomGen g) => PlayerIndex -> GameState g
@@ -705,7 +703,7 @@ wonBy pI = do
 randomAct :: (RandomGen g) => GameState g
 randomAct = do
   vA <- use validActions
-  act' <- uniform vA
+  act' <- uniform (Set.toList vA)
   update act'
 
 -- | Force a particular roll and update (useful for testing purposes).
