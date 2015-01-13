@@ -297,10 +297,13 @@ roadGraphForColor :: Color -> Board -> Gr UndirectedEdge (UndirectedEdge, Undire
 roadGraphForColor color' board'
   = let roads' = getRoadsFor color' board'
         gr' = roadGraph (Map.keysSet roads') (enemyPoints color' board')
-    in gr'
+    in undir gr'
 
 longestRoadForColor :: Board -> Color -> (Color, Int)
-longestRoadForColor = assert False undefined
+longestRoadForColor board' color'
+  = let gr = roadGraphForColor color' board'
+        components' = map length $ components gr
+    in if not (null components') then (color', maximum components') else (color', 0)
 
 longestRoad :: Board -> (Color, Int)
 longestRoad board'

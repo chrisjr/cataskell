@@ -258,7 +258,7 @@ functionsSpec = do
       let board' = b' { _roads = roads' }
       let gr' = roadGraphForColor Blue board'
       labNodes gr' `shouldSatisfy` (== 4) . length
-      labEdges gr' `shouldSatisfy` (== 2) . length
+      labEdges gr' `shouldSatisfy` (== 4) . length -- 2, undirected
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
@@ -279,7 +279,7 @@ functionsSpec = do
       let whiteLongestRoads = Map.union whiteRoads roads'
       let whiteLongest = board' { _roads = whiteLongestRoads }
       longestRoad whiteLongest `shouldBe` (White, 5)
-      let p = ps !! 4 
+      let p = ps !! 3
       let interruption = Map.union (interruptSettlement p) emptyBuildingMap
       let whiteLongestInterrupted = board' { _roads = whiteLongestRoads, _buildings = interruption }
       longestRoad whiteLongestInterrupted `shouldBe` (White, 3)
