@@ -10,7 +10,7 @@ import System.Random.Shuffle
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>), (<*>), (<|>))
 import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe (fromJust, isJust, isNothing, catMaybes, mapMaybe, listToMaybe)
@@ -189,6 +189,12 @@ offerOriginatedWith :: TradeOffer -> PlayerIndex -> Precondition Game
 offerOriginatedWith offer' playerIndex'
   = Precondition (\_ -> offer'^.offeredBy == playerIndex') ("offer originated by " ++ show playerIndex')
 
+-- | Check that a response didn't come from the person who made the offer (unless a complete or a cancel)
+responseNotFromSamePlayer :: TradeAction -> Precondition Game
+responseNotFromSamePlayer trade'
+  = Precondition (\_ -> Just (trade'^.offer.offeredBy) /= otherParty) "Trade response is from a different player"
+      where otherParty = (trade' ^? accepter) <|> (trade' ^? rejecter)
+
 scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Maybe Int)
 scoreFor pI = preuse (players.ix pI.score)
 
@@ -224,7 +230,7 @@ preconditions a@(PlayerAction playerIndex' action') = playersExistFor a : reqs
                                                            c <- construct'
                                                            return $ validConstruct c (g ^. board)
                                                      in  maybeValid == Just True || isNothing maybeValid) (show x ++ " is valid on board") ]
-                 Trade x -> case x of
+                 Trade x -> responseNotFromSamePlayer x : case x of
                    Offer offer' -> [ phaseOneOf [Normal]
                                    , hasResourcesFor (offer'^.offering) playerIndex'
                                    , turnIs playerIndex'
@@ -333,16 +339,17 @@ doPurchase playerIndex' item' = do
         let settlementWas = Building . built $ settlement (Just (p', c'))
         replaceInventory playerIndex' settlementWas (Just $ unbuilt settlement) $ return ()
         doBuild playerIndex' c
-      Card _ -> getCard playerIndex'
-      Potential DevelopmentCard -> getCard playerIndex'
+      Card _ -> getCard
+      Potential DevelopmentCard -> getCard
       Potential (H _) -> return () -- can't buy potential settlement without location
       Potential Road -> return () -- can't buy potential road without location
 
-getCard :: (RandomGen g) => PlayerIndex -> GameState g
-getCard playerIndex' = do
+getCard :: (RandomGen g) => GameState g
+getCard = do
+  currentPlayer' <- use currentPlayer
   allCards' <- use allCards
   let (cardTop, restOfCards) = splitAt 1 allCards'
-  players . ix playerIndex' . newCards <>= cardTop
+  players . ix currentPlayer' . newCards <>= cardTop
   allCards .= restOfCards
 
 transferCards :: (RandomGen g) => PlayerIndex -> GameState g
@@ -453,14 +460,15 @@ doRoll = do
 genPlayerActions :: (RandomGen g) => GameState g
 genPlayerActions = do
   currentPlayerIndex <- use currentPlayer
-  purchases' <- possiblePurchases currentPlayerIndex
-  trades <- possibleTradeActions currentPlayerIndex
-  cardsToPlay <- possibleDevelopmentCards currentPlayerIndex
+  purchases' <- possiblePurchases
+  trades <- possibleTradeActions
+  cardsToPlay <- possibleDevelopmentCards
   validActions .= Set.unions [purchases', trades, cardsToPlay, Set.singleton (mkEndTurn currentPlayerIndex)]
 
-possiblePurchases :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
-possiblePurchases playerIndex' = do
-  player' <- preuse (players.ix playerIndex')
+possiblePurchases :: (RandomGen g) => GameStateReturning g (Set GameAction)
+possiblePurchases = do
+  currentPlayer' <- use currentPlayer 
+  player' <- preuse (players.ix currentPlayer')
   b <- use board
   if isJust player'
   then do
@@ -471,27 +479,30 @@ possiblePurchases playerIndex' = do
     let buildings' = Set.unions [roads', settlements', cities']
     let res = view resources player''
     let possibleBuildings = Set.filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
-    let cards' = Set.fromList [purchase playerIndex' (Potential DevelopmentCard) | sufficient res (cost $ Potential DevelopmentCard)]
-    let mkPurchase = purchase playerIndex' . Building
+    let cards' = Set.fromList [purchase currentPlayer' (Potential DevelopmentCard) | sufficient res (cost $ Potential DevelopmentCard)]
+    let mkPurchase = purchase currentPlayer' . Building
     return $ Set.union cards' (Set.map mkPurchase possibleBuildings)
   else return Set.empty
 
-simpleOffers :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
-simpleOffers playerIndex' = do
-  pRes <- resourcesOf playerIndex'
+simpleOffers :: (RandomGen g) => GameStateReturning g (Set GameAction)
+simpleOffers = do
+  currentPlayer' <- use currentPlayer
+  pRes <- resourcesOf currentPlayer'
   let singles = resCombinationsForTotal 1
   let canOffer = filter (sufficient pRes) singles
   let mightWant = filter (not . sufficient pRes) singles
-  let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> mightWant
+  let offers = mkOffer <$> [currentPlayer'] <*> canOffer <*> mightWant
   return $ Set.fromList offers
 
 canReplyToTrade :: (RandomGen g) => GameStateReturning g (GameAction -> Bool)
 canReplyToTrade = do
   openTrades' <- use openTrades
+  currentPlayer' <- use currentPlayer
   let existingAccepts = Set.filter isAccept openTrades'
   let existingRejects = Set.filter isReject openTrades'
-  let alreadyReplied = Set.union (Set.map (^?accepter) existingAccepts) (Set.map (^?rejecter) existingRejects)
-  return $ \a -> (Just (a^.actor)) `Set.notMember` alreadyReplied
+  let alreadyReplied = Set.union (mapSetMaybe (^?accepter) existingAccepts) (mapSetMaybe (^?rejecter) existingRejects)
+  let checkP a = (a^.actor /= currentPlayer') && (a^.actor) `Set.notMember` alreadyReplied
+  return checkP
 
 openOffer :: (RandomGen g) => GameStateReturning g (Maybe TradeOffer)
 openOffer = do
@@ -541,9 +552,10 @@ possibleCompletes = do
     return $ Set.fromList $ catMaybes completes'
   else return Set.empty
 
-possibleTradeActions :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
-possibleTradeActions playerIndex' = do
-  base <- simpleOffers playerIndex'
+possibleTradeActions :: (RandomGen g) => GameStateReturning g (Set GameAction)
+possibleTradeActions = do
+  currentPlayer' <- use currentPlayer
+  base <- simpleOffers
   offer' <- openOffer
   if isJust offer'
   then do
@@ -551,7 +563,7 @@ possibleTradeActions playerIndex' = do
     accepts' <- possibleAccepts
     rejects' <- possibleRejects
     completes' <- possibleCompletes
-    let cancels = Set.fromList [cancel offer'' | offer''^.offeredBy == playerIndex']
+    let cancels = Set.fromList [cancel offer'' | offer''^.offeredBy == currentPlayer']
     return $ Set.unions [accepts', rejects', completes', cancels]
   else return base
 
@@ -567,16 +579,18 @@ mkAccept offer' = do
   let couldAccept = Map.keysSet ps'
   return $ Set.map (accept offer') couldAccept
 
-possibleDevelopmentCards :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
-possibleDevelopmentCards playerIndex' = do
-  items' <- inventory playerIndex'
+possibleDevelopmentCards :: (RandomGen g) => GameStateReturning g (Set GameAction)
+possibleDevelopmentCards = do
+  currentPlayer' <- use currentPlayer
+  items' <- inventory currentPlayer'
   let cards' = (Set.fromList . filter (/= VictoryPoint) . mapMaybe (^? card)) `fmap` items'
-  return $ maybe Set.empty (Set.map (mkPlayCard playerIndex')) cards'
+  return $ maybe Set.empty (Set.map (mkPlayCard currentPlayer')) cards'
 
-canMoveRobberTo :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set GameAction)
-canMoveRobberTo playerIndex' = do
-  robberSpots <- robbableSpotsFor playerIndex'
-  return $ Set.fromList $ map (mkMoveRobber playerIndex') robberSpots
+canMoveRobberTo :: (RandomGen g) => GameStateReturning g (Set GameAction)
+canMoveRobberTo = do
+  currentPlayer' <- use currentPlayer
+  robberSpots <- robbableSpots
+  return $ Set.fromList $ map (mkMoveRobber currentPlayer') robberSpots
 
 neighborBuildings :: (RandomGen g) => CentralPoint -> GameStateReturning g [OnPoint]
 neighborBuildings cp = do
@@ -585,15 +599,16 @@ neighborBuildings cp = do
   let myNeighbors = (Map.!) centersToNeighbors cp
   return $ mapMaybe (`Map.lookup` buildings') myNeighbors
 
-robbableSpotsFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g [CentralPoint]
-robbableSpotsFor playerIndex' = do
+robbableSpots :: (RandomGen g) => GameStateReturning g [CentralPoint]
+robbableSpots = do
+  currentPlayer' <- use currentPlayer
   ps <- use players >>= return . Map.elems
-  ownColor <- preuses (players.ix playerIndex') color
+  ownColor <- preuses (players.ix currentPlayer') color
   if isJust ownColor
   then do
     let ownColor' = fromJust ownColor
     let playersColors = zip ps (map color ps)
-    let protected = nub $ ownColor':(map snd $ filter (\(p,_) -> view displayScore p < 2) playersColors)
+    let protected = nub $ ownColor':(map snd $ filter (\(p,_) -> view displayScore p <= 2) playersColors)
     filterM (neighborBuildings >=> return . all (not . flip elem protected) . map color) hexCenterPoints
   else return []
 
@@ -677,7 +692,7 @@ toSpecialPhase special' playerIndex' = do
         then validActions .= mustDiscard
         else toSpecialPhase MovingRobber playerIndex'
       MovingRobber -> do
-        robberMoves <- canMoveRobberTo playerIndex'
+        robberMoves <- canMoveRobberTo
         if Set.null robberMoves
         then backToNormal
         else validActions .= robberMoves
