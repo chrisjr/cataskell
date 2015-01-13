@@ -3,19 +3,21 @@
 
 module Cataskell.GameData.Board where
 
-import Cataskell.BoardGraph (allEdges, neighborPoints, resourceConnections, roadConnections)
+import Cataskell.BoardGraph (allEdges, BoardGraph, neighborPoints, resourceConnections, roadGraph, roadConnections)
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
 import Control.Lens
+import Data.Graph.Inductive
+import Data.Graph.Inductive.PatriciaTree()
 import Data.Monoid
 import qualified Data.Map.Strict as Map
+import Data.List (maximumBy)
+import Data.Ord (comparing)
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.List (find)
 import Data.Maybe (mapMaybe, listToMaybe, isNothing)
-import Control.Applicative
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -262,14 +264,17 @@ roadsToPointsFor color' board'
   = let myRoads = getRoadsFor color' board'
     in  Set.fromList . concatMap (\e -> [point1 e, point2 e]) $ Map.keys myRoads
 
+enemyPoints :: Color -> Board -> Set Point
+enemyPoints color' board' = Map.keysSet $ Map.filter ((/= color') . color) $ getHabitations board'
+
 -- | A road can be built at the end of another road or a settlement, anywhere there isn't already one
 validRoadsFor :: Color -> Board -> Set Construct
 validRoadsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
-        enemyPoints = Map.keys $ Map.filter ((/= color') . color) $ getHabitations board'
+        enemyPoints' = enemyPoints color' board'
         freeEdges' = freeEdges board'
         pointsAdjacent e = filter (`Set.member` myPoints) [point1 e, point2 e]
-        notEnemy ps | length ps == 1 = head ps `notElem` enemyPoints -- if only one endpoint belongs to me, can't build
+        notEnemy ps | length ps == 1 = head ps `Set.notMember` enemyPoints' -- if only one endpoint belongs to me, can't build
                     | length ps == 2 = True -- if both endpoints belong to me, I can build even though the enemy is there
                     | otherwise = False
         validEdges = Set.filter (notEnemy . pointsAdjacent) freeEdges'
@@ -288,5 +293,15 @@ validCitiesFor color' board'
         points = Map.keysSet $ Map.filter (isSettlement . Building . Edifice) bldgs
     in  Set.map (\p -> built (city $ Just (p, color'))) points
 
+roadGraphForColor :: Color -> Board -> Gr UndirectedEdge (UndirectedEdge, UndirectedEdge)
+roadGraphForColor color' board'
+  = let roads' = getRoadsFor color' board'
+        gr' = roadGraph (Map.keysSet roads') (enemyPoints color' board')
+    in gr'
+
+longestRoadForColor :: Board -> Color -> (Color, Int)
+longestRoadForColor = assert False undefined
+
 longestRoad :: Board -> (Color, Int)
-longestRoad = assert False undefined
+longestRoad board'
+  = maximumBy (comparing snd) $ map (longestRoadForColor board') [Red, White, Orange, Blue]

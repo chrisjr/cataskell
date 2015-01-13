@@ -21,6 +21,7 @@ module Cataskell.GameData.Location
 , dupleToEdge
 , edgeType
 , mkEdge
+, edgePoints
 ) where
 
 import Cataskell.Util
@@ -135,3 +136,6 @@ edgeType e | all (== Center) positions = BetweenCenters
            | Center `elem` positions && any (/= Center) positions = ToCenter
            | otherwise = Between
     where positions = map position [point1 e, point2 e]
+
+edgePoints :: UndirectedEdge -> Set Point
+edgePoints e = Set.fromList [point1 e, point2 e]

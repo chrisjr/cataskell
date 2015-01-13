@@ -4,12 +4,11 @@ import Test.Hspec
 import Test.QuickCheck
 import Cataskell.BoardGraph
 import Cataskell.GameData.Location
-import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Maybe
 import Data.Tuple (swap)
-import Data.Graph.Inductive.Basic (elfilter)
-import Data.Graph.Inductive.Graph (empty, labEdges, labNodes, neighbors)
+import Data.Graph.Inductive.Basic (isSimple, elfilter)
+import Data.Graph.Inductive.Graph (empty, labEdges, labNodes)
+import Data.Graph.Inductive.PatriciaTree()
 
 instance Arbitrary UndirectedEdge where
   arbitrary = elements (Set.toList allEdges)
@@ -63,3 +62,13 @@ spec = do
       let centerNeighborPoints = Set.fromList . map (Set.fromList . map mkCenter . neighborCoords) $ hexCoords
       let centerNeighborhoods = Set.fromList $ map (neighborPoints centerConnections) centers
       centerNeighborhoods `shouldBe` centerNeighborPoints
+    it "has no loops" $ isSimple boardGraph
+  describe "roadGraph" $
+    it "should be built from a set of edges" $ do
+      let es = Set.fromList [ mkEdge (0,0, Top) (1,-1, Bottom)
+                            , mkEdge (1,-1,Bottom) (1,0,Top)
+                            , mkEdge (1,0,Top) (2, -1, Bottom)
+                            , mkEdge (0,2,Bottom) (0,3,Top)]
+      let r = roadGraph es (Set.singleton (Point (1,0) Top))
+      length (labNodes r) `shouldBe` 4
+      length (labEdges r) `shouldBe` 1

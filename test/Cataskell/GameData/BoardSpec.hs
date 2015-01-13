@@ -10,7 +10,8 @@ import Test.QuickCheck
 import Cataskell.GameData.Board
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Resources
-import Cataskell.GameData.Location
+import Cataskell.GameData.Location hiding (mkEdge)
+import qualified Cataskell.GameData.Location as L (mkEdge)
 import Cataskell.Util
 import Data.List
 import qualified Data.Map.Strict as Map
@@ -23,6 +24,7 @@ import Control.Monad
 import Control.Monad.Random
 import Control.Applicative ((<$>), (<*>))
 
+import Data.Graph.Inductive hiding (context)
 import Cataskell.GameData.LocationSpec()
 import Cataskell.GameData.BasicsSpec ()
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
@@ -201,15 +203,15 @@ blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Botto
             in mkRoadMap es Blue
 
 validEdges :: Set UndirectedEdge
-validEdges = Set.fromList [mkEdge (1,-1,Top) (0,-3, Bottom), mkEdge (1,-3,Bottom) (0,-1,Top)]
+validEdges = Set.fromList [L.mkEdge (1,-1,Top) (0,-3, Bottom), L.mkEdge (1,-3,Bottom) (0,-1,Top)]
 
 invalidEdges :: Set UndirectedEdge
-invalidEdges = Set.fromList [ mkEdge (2,-3,Bottom) (1,-1,Top)
-                            , mkEdge (1,-2,Top) (2,-3,Bottom)
-                            , mkEdge (2,-2, Top) (3,-3, Bottom)]
+invalidEdges = Set.fromList [ L.mkEdge (2,-3,Bottom) (1,-1,Top)
+                            , L.mkEdge (1,-2,Top) (2,-3,Bottom)
+                            , L.mkEdge (2,-2, Top) (3,-3, Bottom)]
 
 addedEdge :: UndirectedEdge
-addedEdge = mkEdge (2,-3, Bottom) (2,-2, Top)
+addedEdge = L.mkEdge (2,-3, Bottom) (2,-2, Top)
 
 blueRoads2 :: RoadMap
 blueRoads2 = Map.union (mkRoadMap [addedEdge] Blue) blueRoads
@@ -250,6 +252,12 @@ functionsSpec = do
       \board c -> let sp = Map.keysSet . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
                       vcp = mapSetMaybe (^?onPoint.point) $ validCitiesFor c board
                   in sp == vcp
+  describe "roadGraphForColor" $ 
+    it "should return a graph of connected roads for a color" $ do
+      let b' = evalRand newBoard (mkStdGen 1)
+      let board' = b' { _roads = Map.union blueRoads2 (_roads board') }
+      let gr = roadGraphForColor Blue board'
+      length (labEdges gr) `shouldBe` 4
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
