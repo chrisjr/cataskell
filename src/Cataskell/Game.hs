@@ -480,7 +480,8 @@ simpleOffers playerIndex' = do
   pRes <- resourcesOf playerIndex'
   let singles = resCombinationsForTotal 1
   let canOffer = filter (sufficient pRes) singles
-  let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> singles
+  let mightWant = filter (not . sufficient pRes) singles
+  let offers = mkOffer <$> [playerIndex'] <*> canOffer <*> mightWant
   return $ Set.fromList offers
 
 canReplyToTrade :: (RandomGen g) => GameStateReturning g (GameAction -> Bool)
