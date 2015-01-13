@@ -230,7 +230,6 @@ gameStateReturningSpec =
                              rejects'' = evalGame possibleRejects g stdGen
                              otherPlayers' = Map.keysSet (g^.players) Set.\\ Set.singleton (g^.currentPlayer)
                          in toJS g $ otherPlayers' == mapSetMaybe (^?action.trade.rejecter) rejects''
-
     context "possibleCompletes" $
       it "should always generate a complete when accepts are present" $ property $
         \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade isAccept (g :: Game) ==>
@@ -280,7 +279,7 @@ gameStateReturningSpec =
                            f x = let g' = fst $ runGame (update x) g (mkStdGen 0)
                                  in not (hasNewCard g') && hasCard g'
                            doesntKeep = maybe True f endTurn
-                       in toJS g $ not (hasNewCard g) && doesntKeep
+                       in isJust endTurn ==> toJS g $ not (hasNewCard g) && doesntKeep
     context "makeDiscards" $
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }

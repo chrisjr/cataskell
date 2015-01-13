@@ -274,6 +274,7 @@ doAction act'
           PlayCard x -> doPlayCard actorIndex x
           EndTurn -> do
             transferCards actorIndex
+            openTrades .= Set.empty
             scoreIsNow <- scoreFor actorIndex
             if scoreIsNow >= Just 10
             then wonBy actorIndex
