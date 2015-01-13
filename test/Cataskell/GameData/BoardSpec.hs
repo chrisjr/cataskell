@@ -13,7 +13,6 @@ import Cataskell.GameData.Resources
 import Cataskell.GameData.Location hiding (mkEdge)
 import qualified Cataskell.GameData.Location as L (mkEdge)
 import Cataskell.Util
-import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -255,9 +254,11 @@ functionsSpec = do
   describe "roadGraphForColor" $ 
     it "should return a graph of connected roads for a color" $ do
       let b' = evalRand newBoard (mkStdGen 1)
-      let board' = b' { _roads = Map.union blueRoads2 (_roads board') }
-      let gr = roadGraphForColor Blue board'
-      length (labEdges gr) `shouldBe` 4
+      let roads' = Map.union blueRoads2 (_roads b')
+      let board' = b' { _roads = roads' }
+      let gr' = roadGraphForColor Blue board'
+      labNodes gr' `shouldSatisfy` (== 4) . length
+      labEdges gr' `shouldSatisfy` (== 2) . length
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'

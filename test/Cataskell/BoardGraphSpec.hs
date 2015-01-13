@@ -72,7 +72,7 @@ spec = do
       let r = roadGraph es (Set.singleton (Point (1,0) Top))
       length (labNodes r) `shouldBe` 4
       length (labEdges r) `shouldBe` 1
-    it "should prohibit cycles" $ do
+    it "should not choke on undirected cycles" $ do
       let es = Set.fromList [ mkEdge (0,0, Top) (1,-1, Bottom)
                             , mkEdge (1,-1,Bottom) (0,1,Top)
                             , mkEdge (0,1,Top) (0, 0, Bottom)
@@ -80,5 +80,5 @@ spec = do
                             , mkEdge (-1,1,Top) (0,-1,Bottom)
                             , mkEdge (0,-1,Bottom) (0,0,Top)]
       let r = roadGraph es Set.empty
-      length (labNodes r) `shouldBe` 6
-      length (labEdges r) `shouldBe` 5 -- don't include link that makes cycle
+      labNodes r `shouldSatisfy` (== 6) . length
+      labEdges r `shouldSatisfy` (== 6) . length
