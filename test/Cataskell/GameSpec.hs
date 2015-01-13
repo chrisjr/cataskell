@@ -168,6 +168,28 @@ gameInvariantSpec = do
              newRes = g' ^. players . ix pI . resources
          in toJS game $ newRes === oldRes <> mkNeg (cost (Building bldg'))
 
+getFromGame :: GameStateReturning StdGen a -> Game -> a
+getFromGame x g = evalGame x g (mkStdGen 0)
+
+actionsFromGame :: Game -> Set GameAction
+actionsFromGame = getFromGame (use validActions)
+
+checkIfValidOffer :: Game -> Bool
+checkIfValidOffer g = let offer' = firstMaybe $ mapSetMaybe toOffer $ tradesFrom g 
+                          oA = fmap (\x -> (x^.offeredBy, x^.asking)) offer'
+                          couldRespond = fmap (\(o, x) -> findKeyValueWhere (\pI p -> pI /= o && sufficient (p^.resources) x) (g^.players)) oA
+                      in isJust couldRespond
+
+tradesFrom :: Game -> Set TradeAction
+tradesFrom = getFromGame (use openTrades)
+
+checkIfOpenTrade :: (TradeAction -> Bool) -> Game -> Bool
+checkIfOpenTrade cImplies = anyS cImplies . tradesFrom
+
+checkForPossibleTrade :: (TradeAction -> Bool) -> Game -> Bool
+checkForPossibleTrade x game' = let acts' = actionsFromGame (game' :: Game)
+                                in  anyS ((== Just True) . fmap x . preview (action.trade)) acts'
+
 gameStateReturningSpec :: Spec
 gameStateReturningSpec =
   describe "GameStateReturning functions" $ do
@@ -194,19 +216,11 @@ gameStateReturningSpec =
                               hasRepliedAlready = Set.filter (\x -> isReject x || isAccept x) openTrades'
                           in (offer', hasRepliedAlready)
     context "possibleAccepts" $
-      it "should generate accepts when an offer is present and others can fulfill it" $ property $ 
+      it "should generate accepts when an offer is present and others can fulfill it" $ property $
         \(Blind ng) -> let g = fromNormalGame ng
-                           (offer', hasRepliedAlready) = getHasReplied g
-                           f x = let ask' = x ^. asking
-                                     asker' = x ^. offeredBy
-                                 in findKeyWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
-                           hasEnough = fmap f offer'
-                           oh = liftM2 (,) offer' (join hasEnough)
-                           allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offeredBy, p'] g) oh
-                       in Set.null hasRepliedAlready && allExist == Just True ==> 
-                         let stdGen = mkStdGen 0
-                             accepts'' = evalGame possibleAccepts g stdGen
-                         in toJS g $ not $ Set.null accepts''
+                           (_, hasRepliedAlready) = getHasReplied g 
+                       in checkIfValidOffer g && Set.null hasRepliedAlready ==> 
+                         toJS g $ checkForPossibleTrade isAccept g
     context "possibleRejects" $
       it "should generate rejects when an offer is present, for all except offerer" $ property $ 
         \(Blind ng) -> let g = fromNormalGame ng
@@ -217,7 +231,11 @@ gameStateReturningSpec =
                              otherPlayers' = Map.keysSet (g^.players) Set.\\ Set.singleton (g^.currentPlayer)
                          in toJS g $ otherPlayers' == mapSetMaybe (^?action.trade.rejecter) rejects''
 
-    let game = head randomGames
+    context "possibleCompletes" $
+      it "should always generate a complete when accepts are present" $ property $
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade isAccept (g :: Game) ==>
+          toJS g $ checkForPossibleTrade isComplete g
+    let game = head $ filter ((== Normal) . (^.phase)) randomGames
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)
@@ -230,43 +248,23 @@ gameStateReturningSpec =
                    ]
       let offerGame = foldr (.) id setAll game
       let offerAndAcceptGame = set openTrades (Set.fromList [Offer offer', accept'^?!action.trade]) offerGame
-      let getFromGame x g = evalGame x g (mkStdGen 0)
-      let actionsFromGame = getFromGame possibleTradeActions
       it "should generate an accept when offer is present and another can fulfill" $
         actionsFromGame offerGame `shouldSatisfy` Set.member accept'
       it "should generate a complete when offer and acceptance are present" $
         actionsFromGame offerAndAcceptGame `shouldSatisfy` Set.member complete'
-
-      let tradesFrom game' = getFromGame (use openTrades) (game' :: Game)
-      let checkIfAny cImplies = anyS cImplies . tradesFrom
-      let checkIfValidOffer g = let offer' = firstMaybe $ mapSetMaybe toOffer $ tradesFrom g 
-                                    oA = fmap (\x -> (x^.offeredBy, x^.asking)) offer'
-                                    couldRespond = fmap (\(o, x) -> findKeyValueWhere (\pI p -> pI /= o && sufficient (p^.resources) x) (g^.players)) oA
-                                in isJust couldRespond
-      let checkFor x game' = let acts' = actionsFromGame (game' :: Game)
-                             in  anyS ((== Just True) . fmap x . preview (action.trade)) acts'
-      it "should generate an accept when offers are present and others can fulfill" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfValidOffer g ==>
-          toJS g $ checkFor isAccept g
-      it "should always generate a reject when offers are present" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) (g :: Game) ==>
-          toJS g $ checkFor isReject g
       it "should never have an accept and reject by the same player" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> 
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade (isJust . toOffer) g ==> 
           let trades' = tradesFrom g
               rejecters = Set.map (^?!rejecter) $ Set.filter isReject trades'
               accepters = Set.map (^?!accepter) $ Set.filter isAccept trades'
           in  toJS g $ Set.null (accepters `Set.intersection` rejecters)
       it "should never have an offer and an accept/reject by the same player" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> 
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfOpenTrade (isJust . toOffer) g ==> 
           let trades' = tradesFrom g
               offerer = mapSetMaybe (^?offer.offeredBy) trades'
               rejecters = Set.map (^?!rejecter) $ Set.filter isReject trades'
               accepters = Set.map (^?!accepter) $ Set.filter isAccept trades'
           in  toJS g $ Set.null (offerer `Set.intersection` (accepters `Set.union` rejecters))
-      it "should always generate a complete when accepts are present" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny isAccept (g :: Game) ==>
-          toJS g $ checkFor isComplete g
       it "should never produce invalid actions" $ property $
         allValid possibleTradeActions
     context "getCard" $
