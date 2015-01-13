@@ -1,7 +1,8 @@
-module Cataskell.GameSpec (main, spec) where
+module Cataskell.GameSpec (main, spec, toJS) where
 
 import Test.Hspec
 import Test.QuickCheck
+import Test.QuickCheck.Modifiers (Blind)
 import Cataskell.Game
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -18,7 +19,10 @@ import Data.Maybe (fromJust, isJust, isNothing, mapMaybe)
 import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
+import Data.Aeson
+import qualified Data.ByteString.Lazy.Char8 as B
 import Cataskell.Util
+import Cataskell.Serialize()
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 import Cataskell.GameData.ActionsSpec()
 import Cataskell.GameData.BasicsSpec()
@@ -98,6 +102,18 @@ instance Arbitrary InitialGame where
 
 -- newtype GameStateStd = GameStateStd (StateT Game (RandT StdGen Identity) ())
 
+toJS :: (ToJSON a, Testable prop) => a -> prop -> Property
+toJS a = counterexample ("\nvar state=" ++ B.unpack (encode a) ++ "; showState(state);")
+
+p0 :: PlayerIndex
+p0 = toPlayerIndex 0
+
+p1 :: PlayerIndex
+p1 = toPlayerIndex 1
+
+p2 :: PlayerIndex
+p2 = toPlayerIndex 2
+
 main :: IO ()
 main = hspec spec
 
@@ -125,10 +141,10 @@ gameInvariantSpec = do
       \game -> let n = (game :: Game) ^.validActions.to Set.size
                in (n > 0) || (view phase game == End)
     it "has only valid actions in the validActions list" $ property $
-      \game stdGen -> let vA = (game :: Game) ^. validActions
-                          allExist = allS (`playersExistFor'` game) vA
-                          isValid' x = evalRand (evalStateT (isValid x) game) (stdGen :: StdGen)
-                      in allExist ==> allS isValid' vA
+      \(Blind game) stdGen -> let vA = (game :: Game) ^. validActions
+                                  allExist = allS (`playersExistFor'` game) vA
+                                  isValid' x = evalRand (evalStateT (isValid x) game) (stdGen :: StdGen)
+                              in allExist ==> toJS game $ allS isValid' vA
     it "has at most one player with >= 10 victory points" $ property $
       \game -> let scores' = evalGame scores game (mkStdGen 0)
                    highestCount = Map.findMax $ counts scores'
@@ -137,7 +153,7 @@ gameInvariantSpec = do
       \game -> let res' = evalGame (liftM (Map.map (^.resources)) (use players)) game (mkStdGen 0)
                in  all nonNegative $ Map.elems res'
     it "should deduct resources when a valid purchase is made" $ property $
-      \ng pI -> 
+      \(Blind ng) pI -> 
        let game = fromNormalGame ng
            vA = game ^. validActions
            purchase' = findS (isJust . preview (action.item.building)) vA
@@ -149,16 +165,15 @@ gameInvariantSpec = do
              bldg' = fromJust bldg
              (g', _) = runGame (update purchase'') game (mkStdGen 0)
              newRes = g' ^. players . ix pI . resources
-         in newRes === oldRes <> mkNeg (cost (Building bldg'))
+         in toJS game $ newRes === oldRes <> mkNeg (cost (Building bldg'))
 
 gameStateReturningSpec :: Spec
 gameStateReturningSpec =
   describe "GameStateReturning functions" $ do
-    let game = head randomGames
-    let allValid f ng = let g = fromNormalGame ng
-                            pI = view currentPlayer g
-                            r' = mkStdGen 0
-                        in and $ evalGame (f pI >>= \x -> mapM isValid (Set.toList x)) g r'
+    let allValid f (Blind ng) = let g = fromNormalGame ng
+                                    pI = view currentPlayer g
+                                    r' = mkStdGen 0
+                                in toJS g $ and $ evalGame (f pI >>= \x -> mapM isValid (Set.toList x)) g r'
     context "simpleOffers" $
       it "should not generate invalid actions" $ property $
         allValid simpleOffers
@@ -170,20 +185,22 @@ gameStateReturningSpec =
         allValid possibleDevelopmentCards
     context "possibleAccepts" $
       it "should generate accepts when an offer is present" $ property $ 
-        \ng -> let g = fromNormalGame ng
-                   openTrades' = g^.openTrades
-                   offer' = findS (isJust . toOffer) openTrades'
-                   hasAcceptedAlready = Set.filter isAccept openTrades'
-                   f x = let ask' = x^?! offer.asking
-                             asker' = x^?! offer.offeredBy
-                         in findKeyWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
-                   hasEnough = fmap f offer'
-                   oh = liftM2 (,) offer' (join hasEnough)
-                   allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'] g) oh
-               in Set.null hasAcceptedAlready && allExist == Just True ==> 
-                 let stdGen = mkStdGen 0
-                     accepts'' = evalGame possibleAccepts g stdGen
-                 in not $ Set.null accepts''
+        \(Blind ng) -> let g = fromNormalGame ng
+                           openTrades' = g^.openTrades
+                           offer' = findS (isJust . toOffer) openTrades'
+                           hasAcceptedAlready = Set.filter isAccept openTrades'
+                           f x = let ask' = x^?! offer.asking
+                                     asker' = x^?! offer.offeredBy
+                                 in findKeyWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
+                           hasEnough = fmap f offer'
+                           oh = liftM2 (,) offer' (join hasEnough)
+                           allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'] g) oh
+                       in Set.null hasAcceptedAlready && allExist == Just True ==> 
+                         let stdGen = mkStdGen 0
+                             accepts'' = evalGame possibleAccepts g stdGen
+                         in toJS g $ not $ Set.null accepts''
+
+    let game = head randomGames
     context "possibleTradeActions" $ do
       let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
       let accept' = accept offer' (toPlayerIndex 1)
@@ -208,37 +225,37 @@ gameStateReturningSpec =
       let checkFor x game' = let acts' = actionsFromGame (game' :: Game)
                              in  anyS ((== Just True) . fmap x . preview (action.trade)) acts'
       it "should always generate an accept when offers are present" $ property $
-        \ng -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> checkFor isAccept g
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==>
+          toJS g $ checkFor isAccept g
       it "should always generate a reject when offers are present" $ property $
-        \ng -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) (g :: Game) ==> checkFor isReject g
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) (g :: Game) ==>
+          toJS g $ checkFor isReject g
       it "should never have an accept and reject by the same player" $ property $
-        \ng -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> 
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==> 
           let trades' = tradesFrom g
               rejecters = Set.map (^?!rejecter) $ Set.filter isReject trades'
               accepters = Set.map (^?!accepter) $ Set.filter isAccept trades'
-          in  Set.null (accepters `Set.intersection` rejecters)
+          in  toJS g $ Set.null (accepters `Set.intersection` rejecters)
       it "should always generate a complete when accepts are present" $ property $
-        \ng -> let g = fromNormalGame ng in checkIfAny isAccept (g :: Game) ==> checkFor isComplete g
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny isAccept (g :: Game) ==>
+          toJS g $ checkFor isComplete g
       it "should never produce invalid actions" $ property $
         allValid possibleTradeActions
     context "getCard" $
       it "should add a card to a player's newCards field" $ property $
-        \ng -> let g = fromNormalGame ng
-                   cardIs = views allCards head g
-                   c' = Card cardIs
-                   pI = view currentPlayer g
-                   hasNewCard x = cardIs `elem` view (players . ix pI . newCards) x
-                   hasCard x = c' `elem` view (players . ix pI . constructed) x
-                   vA = view validActions g
-                   endTurn = findS ((== EndTurn) . view action) vA
-                   f x = let g' = fst $ runGame (update x) g (mkStdGen 0)
-                         in not (hasNewCard g') && hasCard g'
-                   doesntKeep = maybe True f endTurn
-               in not (hasNewCard g) && doesntKeep
-    context "makeDiscards" $ do
-      let p0 = toPlayerIndex 0
-      let p1 = toPlayerIndex 1
-      let p2 = toPlayerIndex 2
+        \(Blind ng) -> let g = fromNormalGame ng
+                           cardIs = views allCards head g
+                           c' = Card cardIs
+                           pI = view currentPlayer g
+                           hasNewCard x = cardIs `elem` view (players . ix pI . newCards) x
+                           hasCard x = c' `elem` view (players . ix pI . constructed) x
+                           vA = view validActions g
+                           endTurn = findS ((== EndTurn) . view action) vA
+                           f x = let g' = fst $ runGame (update x) g (mkStdGen 0)
+                                 in not (hasNewCard g') && hasCard g'
+                           doesntKeep = maybe True f endTurn
+                       in toJS g $ not (hasNewCard g) && doesntKeep
+    context "makeDiscards" $
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
                      , set (players . ix p1 . resources) mempty { lumber = 9 }
@@ -246,8 +263,8 @@ gameStateReturningSpec =
                      ]
         let game' = foldr (.) id setAll game
         let discards = evalGame makeDiscards game' (mkStdGen 0)
-        discards `shouldBe` Set.fromList ([ mkDiscard (p0, mempty { ore = 4 })
-                                         , mkDiscard (p1, mempty { lumber = 4 })])
+        discards `shouldBe` Set.fromList [ mkDiscard (p0, mempty { ore = 4 })
+                                         , mkDiscard (p1, mempty { lumber = 4 })]
 
 sampleGameSpec :: Spec
 sampleGameSpec = do
@@ -264,7 +281,7 @@ sampleGameSpec = do
         let playerIs = [0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 2, 2, 1, 1, 0, 0]
 
         forM_ (zip3 [0..] playerIs (map fst gs)) $ \(i, c, g) ->
-          it ("should permit placement for player " ++ (show c)) $ do
+          it ("should permit placement for player " ++ show c) $ do
             view currentPlayer g `shouldBe` toPlayerIndex c
             views validActions Set.size g `shouldSatisfy` (<= (54 - ((i `div` 2) * 3)))
       it "should transition to Normal phase when placements are complete" $ do
@@ -274,7 +291,6 @@ sampleGameSpec = do
     -- produce some variants that will be used later
 
     let (rolledOnce, randRolled) = gs !! 17
-    let p0 = toPlayerIndex 0
 
     let withRoadBuilding = (players . ix p0 . constructed) <>~ [Card RoadBuilding] $ rolledOnce
     let withInvention = (players . ix p0 . constructed) <>~ [Card Invention] $ rolledOnce
@@ -285,8 +301,7 @@ sampleGameSpec = do
     context "in Normal phase" $ do
       it "should start each turn with a roll" $ do
         let vA = view validActions normalGame
-        let p1 = views players (head . Map.keys) normalGame
-        vA `shouldBe` Set.singleton (rollFor p1)
+        vA `shouldBe` Set.singleton (rollFor p0)
         view turnAdvanceBy normalGame `shouldBe` 1
 
       it "should distribute resources once a roll happens" $ do
@@ -404,9 +419,6 @@ sampleGameSpec = do
         view phase g' `shouldBe` Special Monopolizing
 
     context "in the Special phase" $ do
-      let p0 = toPlayerIndex 0
-      let p1 = toPlayerIndex 1
-      let p2 = toPlayerIndex 2
       context "RobberAttack" $ do
         let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
                      , set (players . ix p1 . resources) mempty { wheat = 10 }
@@ -429,24 +441,24 @@ sampleGameSpec = do
         describe "the player must move the robber" $ do
           context "when someone has >2 visible victory points" $ do
             specify "to a hex ringed by players with >2 visible victory points" $ property $
-              \ng -> let g = fromNormalGame ng
-                         scores' = evalGame scores (g :: Game) randRolled 
-                     in any (>2) scores' ==>
-                          let (g', _) = runGame (forceRoll 7) g randRolled 
-                              psScores = zip (map toPlayerIndex [0..3]) scores'
-                              pColors = Map.map color $ view players g'
-                              high = map fst $ filter ((>2) . snd) psScores
-                              acceptableColors = mapMaybe (`Map.lookup` pColors) high
-                              vA = view validActions g'
-                              checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
-                              isValidRobberMove a = case a^.action of
-                                                      SpecialAction (R (MoveRobber dest)) -> checkDest dest
-                                                      _ -> False
-                          in  allS isValidRobberMove vA
+              \(Blind ng) -> let g = fromNormalGame ng
+                                 scores' = evalGame scores (g :: Game) randRolled 
+                             in any (>2) scores' ==>
+                                  let (g', _) = runGame (forceRoll 7) g randRolled 
+                                      psScores = zip (map toPlayerIndex [0..3]) scores'
+                                      pColors = Map.map color $ view players g'
+                                      high = map fst $ filter ((>2) . snd) psScores
+                                      acceptableColors = mapMaybe (`Map.lookup` pColors) high
+                                      vA = view validActions g'
+                                      checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
+                                      isValidRobberMove a = case a^.action of
+                                                              SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                              _ -> False
+                                  in  toJS g' $ allS isValidRobberMove vA
             specify "and should rob one of the players there" $ do
               pending
-          specify "to an unoccupied hex, otherwise" $ property $ do
-            \ng -> 
+          specify "to an unoccupied hex, otherwise" $ property $
+            \(Blind ng) -> 
                let g = fromNormalGame ng
                    scores' = evalGame scores g randRolled 
                in not (any (>2) scores') ==>
@@ -456,60 +468,58 @@ sampleGameSpec = do
                            isValidRobberMove a = case a^.action of
                                                    SpecialAction (R (MoveRobber dest)) -> checkDest dest
                                                    _ -> False
-                       in  allS isValidRobberMove vA
+                       in  toJS g' $ allS isValidRobberMove vA
       context "FreeRoads" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
         let (g', _) = runGame (update playCard') withRoadBuilding randRolled
         let pI = view currentPlayer g'
         let isFreeRoad x = isJust $ x ^? action.construct.onEdge
 
-        let (built1, _) = runGame (randomAct) g' randRolled
-        let (built2, _) = runGame (randomAct) built1 randRolled
+        let (built1, _) = runGame randomAct g' randRolled
+        let (built2, _) = runGame randomAct built1 randRolled
 
         it "should allow the current player to build two roads" $ do
-          view validActions g' `shouldSatisfy` (allS isFreeRoad)
-          view validActions built1 `shouldSatisfy` (allS isFreeRoad)
+          view validActions g' `shouldSatisfy` allS isFreeRoad
+          view validActions built1 `shouldSatisfy` allS isFreeRoad
         it "should return to normal after two roads are built" $ do
           let vA = view validActions built2
           vA `shouldSatisfy` (not . anyS isFreeRoad)
-          vA `shouldSatisfy` (Set.member (mkEndTurn pI))
+          vA `shouldSatisfy` Set.member (mkEndTurn pI)
           view phase built2 `shouldBe` Normal
-      context "Inventing" $ do
+      context "Inventing" $
         it "should allow the current player to obtain two resources of their choice" $ do
-          let playerIndex' = (toPlayerIndex 0)
-          let resPre = view (players . ix playerIndex' . resources) withInvention
+          let resPre = view (players . ix p0 . resources) withInvention
           let lumberPre = lumber resPre
           let wheatPre = wheat resPre
-          let playCard' = mkPlayCard playerIndex' Invention
+          let playCard' = mkPlayCard p0 Invention
           let (g', _) = runGame (update playCard') withInvention randRolled
-          let inventions = Set.fromList $ map (invent playerIndex') possibleInventions
+          let inventions = Set.fromList $ map (invent p0) possibleInventions
           view validActions g' `shouldBe` inventions
-          let lumberWheatInvention = PlayerAction playerIndex' (SpecialAction (I (InventionOf mempty { lumber = 1, wheat = 1})))
+          let lumberWheatInvention = PlayerAction p0 (SpecialAction (I (InventionOf mempty { lumber = 1, wheat = 1})))
           let (postLumberWheatInvention, _) = runGame (update lumberWheatInvention) g' randRolled
 
-          let resPost = view (players . ix playerIndex' . resources) postLumberWheatInvention
+          let resPost = view (players . ix p0 . resources) postLumberWheatInvention
           let lumberPost = lumber resPost
           let wheatPost = wheat resPost
           lumberPost `shouldSatisfy` (== lumberPre + 1)
           wheatPost `shouldSatisfy` (== wheatPre + 1)
-      context "Monopolizing" $ do
+      context "Monopolizing" $
         it "should allow the current player to obtain all resources of a certain type" $ do
-          let playerIndex' = (toPlayerIndex 0)
-          let playCard' = mkPlayCard playerIndex' Monopoly
+          let playCard' = mkPlayCard p0 Monopoly
           let (g', _) = runGame (update playCard') withMonopoly randRolled
-          let monopolies = Set.fromList $ map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
+          let monopolies = Set.fromList $ map (PlayerAction p0 . SpecialAction) possibleMonopolies
           view validActions g' `shouldBe` monopolies
 
-          let lumberMonopoly = PlayerAction playerIndex' (SpecialAction (M (MonopolyOn Lumber)))
+          let lumberMonopoly = PlayerAction p0 (SpecialAction (M (MonopolyOn Lumber)))
           let (postMonopoly, _) = runGame (update lumberMonopoly) g' randRolled
 
           let pRes = Map.elems . Map.map (view resources) $ postMonopoly^.players
-          let totalLumber = sum $ map (lumber) pRes
-          pRes `shouldSatisfy` (all (\r -> lumber r == 0 || lumber r == totalLumber))
-    context "in End phase" $ do
+          let totalLumber = sum $ map lumber pRes
+          pRes `shouldSatisfy` all (\r -> lumber r == 0 || lumber r == totalLumber)
+    context "in End phase" $
       it "has no more validActions" $ property $
-        \g -> view phase (g :: Game) == End ==>
-          Set.null $ view validActions g
+        \(Blind g) -> view phase (g :: Game) == End ==>
+          toJS g $ Set.null $ view validActions g
   describe "updateBonuses" $ do
     context "when comparing roads" $ do
       it "should grant the LongestRoad when the first player has a road of length 5" $ do
