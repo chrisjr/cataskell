@@ -199,7 +199,7 @@ interruptSettlement p = Map.singleton p (Just $ OnPoint p Red Settlement)
 
 blueRoads :: RoadMap
 blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top]
-                es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
+                es = map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
             in mkRoadMap es Blue
 
 validEdges :: Set UndirectedEdge
@@ -232,26 +232,26 @@ functionsSpec = do
                       vr' = Set.map (^?! onEdge.edge) vr
                   in  (rm' `Set.intersection` vr') `shouldSatisfy` Set.null
     context "when an enemy building is on one of the endpoints" $ do
-      let isEmpty = Map.null . Map.mapMaybe id
+      let isEmpty' = Map.null . Map.mapMaybe id
       it "should prohibit building if player only controls one side" $ property $
         \rt -> let b = fromRTBoard rt
-                   hasNeeded = isNothing (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty (_buildings b))
-               in hasNeeded ==> (Set.map getE $ validRoadsFor Blue b) == validEdges
+                   hasNeeded = isNothing (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty' (_buildings b))
+               in hasNeeded ==> Set.map getE (validRoadsFor Blue b) == validEdges
       it "should allow building if player controls both sides" $ property $
         \rt -> let b = fromRTBoard rt
-                   hasNeeded = not (isNothing (join $ Map.lookup addedEdge (_roads b)) || isEmpty (_buildings b))
-               in hasNeeded ==> (Set.map getE $ validRoadsFor Blue b) == Set.union invalidEdges validEdges
-  describe "validSettlementsFor" $ do
+                   hasNeeded = not (isNothing (join $ Map.lookup addedEdge (_roads b)) || isEmpty' (_buildings b))
+               in hasNeeded ==> Set.map getE (validRoadsFor Blue b) == Set.union invalidEdges validEdges
+  describe "validSettlementsFor" $
     it "should never include an existing settlement among valid options" $ property $
       \board c -> let sm' = Map.keysSet $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
                       vs = validSettlementsFor (c :: Color) board
                       vs' = Set.map (^?! onPoint.point) vs
                   in  (sm' `Set.intersection` vs') `shouldSatisfy` Set.null
-  describe "validCitiesFor" $ do
+  describe "validCitiesFor" $
     it "should return all points that have settlements" $ property $ 
-      \board c -> let sp = Map.keysSet . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
+      \board c -> let sp' = Map.keysSet . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
                       vcp = mapSetMaybe (^?onPoint.point) $ validCitiesFor c board
-                  in sp == vcp
+                  in sp' === vcp
   describe "roadGraphForColor" $ 
     it "should return a graph of connected roads for a color" $ do
       let b' = evalRand newBoard (mkStdGen 1)
@@ -263,7 +263,7 @@ functionsSpec = do
     let roads' = _roads board'
     let ps = [Point (0, -3) Bottom, Point (-1,-1) Top, Point (1,-2) Bottom, Point (-2,0) Top,
               Point (-2, -1) Bottom, Point (-3,-1) Top]
-    let es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
+    let es = map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
     it "should return the color of the player with the longest road and its length" $ do
       let blueLongest = Map.union blueRoads roads'
       let blueLongestBoard = board' { _roads = blueLongest }

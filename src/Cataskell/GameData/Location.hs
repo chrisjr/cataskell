@@ -17,7 +17,10 @@ module Cataskell.GameData.Location
 , allPoints
 , mkHexPointsAndEdges
 , EdgeType(..)
-, UndirectedEdge(..)
+, UndirectedEdge
+, mkUndirectedEdge
+, point1
+, point2
 , dupleToEdge
 , edgeType
 , mkEdge
@@ -103,10 +106,10 @@ allPoints = Set.fromList $ concatMap pointsAroundHex hexCenterPoints
 
 mkHexPointsAndEdges :: CentralPoint -> ([Point], [UndirectedEdge])
 mkHexPointsAndEdges centerPoint
-  = let edgePoints = pointsAroundHex centerPoint
-        localPoints = (fromCenter centerPoint):edgePoints
-        toCenters = map dupleToEdge $ zip (repeat $ fromCenter centerPoint) edgePoints
-        loop = windowed 2 (edgePoints ++ [head edgePoints])
+  = let edgePoints' = pointsAroundHex centerPoint
+        localPoints = (fromCenter centerPoint):edgePoints'
+        toCenters = map dupleToEdge $ zip (repeat $ fromCenter centerPoint) edgePoints'
+        loop = windowed 2 (edgePoints' ++ [head edgePoints'])
         loop' = map (dupleToEdge . fromJust . listToDuple) loop
         localEdges = loop' ++ toCenters
     in (localPoints, localEdges)
@@ -120,16 +123,21 @@ data EdgeType
 data UndirectedEdge = UndirectedEdge
   { point1 :: Point
   , point2 :: Point
-  } deriving (Ord, Show, Read,Generic)
+  } deriving (Eq, Ord, Show, Read,Generic)
 
-instance Eq UndirectedEdge where
-  x == y = (point1 x == point1 y && point2 x == point2 y) || (point1 x == point2 y && point2 x == point1 y) 
+mkUndirectedEdge :: Point -> Point -> UndirectedEdge
+mkUndirectedEdge p1 p2 
+  | p1 < p2 = UndirectedEdge p1 p2
+  | p2 < p1 = UndirectedEdge p2 p1
+  | otherwise = error "An edge cannot be a loop"
 
 dupleToEdge :: (Point, Point) -> UndirectedEdge
-dupleToEdge (x, y) = UndirectedEdge x y
+dupleToEdge = uncurry mkUndirectedEdge
 
 mkEdge :: (Int, Int, VertexPosition) -> (Int, Int, VertexPosition) -> UndirectedEdge
-mkEdge (a,b,p1) (c,d,p2) = UndirectedEdge (Point (a,b) p1) (Point (c,d) p2)
+mkEdge (a,b,pos1) (c,d,pos2) = mkUndirectedEdge p1 p2
+  where p1 = Point (a,b) pos1 
+        p2 = Point (c,d) pos2
 
 edgeType :: UndirectedEdge -> EdgeType
 edgeType e | all (== Center) positions = BetweenCenters

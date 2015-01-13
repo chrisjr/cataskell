@@ -63,7 +63,7 @@ spec = do
       let centerNeighborhoods = Set.fromList $ map (neighborPoints centerConnections) centers
       centerNeighborhoods `shouldBe` centerNeighborPoints
     it "has no loops" $ isSimple boardGraph
-  describe "roadGraph" $
+  describe "roadGraph" $ do
     it "should be built from a set of edges" $ do
       let es = Set.fromList [ mkEdge (0,0, Top) (1,-1, Bottom)
                             , mkEdge (1,-1,Bottom) (1,0,Top)
@@ -72,3 +72,13 @@ spec = do
       let r = roadGraph es (Set.singleton (Point (1,0) Top))
       length (labNodes r) `shouldBe` 4
       length (labEdges r) `shouldBe` 1
+    it "should prohibit cycles" $ do
+      let es = Set.fromList [ mkEdge (0,0, Top) (1,-1, Bottom)
+                            , mkEdge (1,-1,Bottom) (0,1,Top)
+                            , mkEdge (0,1,Top) (0, 0, Bottom)
+                            , mkEdge (0,0, Bottom) (-1,1,Top)
+                            , mkEdge (-1,1,Top) (0,-1,Bottom)
+                            , mkEdge (0,-1,Bottom) (0,0,Top)]
+      let r = roadGraph es Set.empty
+      length (labNodes r) `shouldBe` 6
+      length (labEdges r) `shouldBe` 5 -- don't include link that makes cycle

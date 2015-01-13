@@ -53,23 +53,23 @@ spec = do
     let p = Point { coord = (0, 0), position = Top }
     let p' = Point { coord = (0, -1), position = Bottom }
     let c = Blue
-    let e = UndirectedEdge p p'
+    let e = mkUndirectedEdge p p'
     describe "has a point value" $ do
-      it "is 1 for a built settlement" $ do
-        (pointValue $ settlement (Just (p, c))) `shouldBe` 1
-      it "is 0 for an unbuilt settlement" $ do
-        (pointValue $ settlement Nothing) `shouldBe` 0
-      it "is 2 for a built city" $ do
-        (pointValue $ city (Just (p, c))) `shouldBe` 2
-      it "is 0 for an unbuilt city" $ do
-        (pointValue $ city Nothing) `shouldBe` 0
-      it "is 0 for a built road" $ do
-        (pointValue $ road (Just (e, c))) `shouldBe` 0
-      it "is 1 for a built victory card" $ do
-        (pointValue $ devCard (Just VictoryPoint)) `shouldBe` 1
-      it "is 0 for a built development card of another kind" $ do
-        (pointValue $ devCard (Just Knight)) `shouldBe` 0
-  describe "A Bonus" $ do
+      it "is 1 for a built settlement" $
+        pointValue (settlement (Just (p, c))) `shouldBe` 1
+      it "is 0 for an unbuilt settlement" $
+        pointValue (settlement Nothing) `shouldBe` 0
+      it "is 2 for a built city" $
+        pointValue (city (Just (p, c))) `shouldBe` 2
+      it "is 0 for an unbuilt city" $
+        pointValue (city Nothing) `shouldBe` 0
+      it "is 0 for a built road" $
+        pointValue (road (Just (e, c))) `shouldBe` 0
+      it "is 1 for a built victory card" $
+        pointValue (devCard (Just VictoryPoint)) `shouldBe` 1
+      it "is 0 for a built development card of another kind" $
+        pointValue (devCard (Just Knight)) `shouldBe` 0
+  describe "A Bonus" $
     it "should be worth 2 points" $ do
       pointValue LongestRoad `shouldBe` 2
       pointValue LargestArmy `shouldBe` 2

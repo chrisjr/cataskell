@@ -117,7 +117,7 @@ roadGraph s enemyPs
                       in Set.size p == 1 && fmap (`Set.notMember` enemyPs) (firstMaybe p) == Just True
         s' = Set.toList s
         g = insNodesOnce s' empty
-        uEdges = [(s1,s2) | s1 <- s', s2 <- Set.toList (Set.delete s1 s), valid s1 s2, s1 < s2]
+        uEdges = [(s1,s2) | s1 <- s', s2 <- s', valid s1 s2, s1 < s2]
         insEdge' gr (s1, s2) = fromJust $ f s1' s2'
                                  where f = liftM2 (\x y -> insEdge (x,y,(s1,s2)) gr)
                                        s1' = getNodeMaybe s1 gr

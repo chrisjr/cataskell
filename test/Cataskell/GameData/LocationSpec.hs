@@ -6,6 +6,7 @@ import Data.List (sort)
 import Cataskell.GameData.Location
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import Cataskell.BoardGraphSpec() -- arbitrary undirected edge
 
 instance Arbitrary Point where
   arbitrary = elements (Set.toList allPoints)
@@ -50,16 +51,11 @@ spec = do
                 Point (-1,3) Top, Point (-1,2) Bottom, 
                 Point (-2,3) Top, Point (-1,1) Bottom]
       (sort $ pointsAroundHex (toCenter c)) `shouldBe` (sort ps)
-  describe "mkHexPointsAndEdges" $ do
+  describe "mkHexPointsAndEdges" $
     it "should have the same points as center ++ pointsAroundHex" $ property $
       \c -> (fst $ mkHexPointsAndEdges (c :: CentralPoint)) == (fromCenter c):(pointsAroundHex c)
   describe "An UndirectedEdge" $ do
-    let p1 = Point { coord = (0,0), position = Top }
-    let p2 = Point { coord = (0,0), position = Top }
-    let e = UndirectedEdge { point1 = p1, point2 = p2 }
-    it "should have two points" $ do
-      point1 e `shouldBe` p1
-      point2 e `shouldBe` p2
-    it "should be equal to itself and an edge going the opposite way" $ do
-      let e' = UndirectedEdge { point1 = p2, point2 = p1 }
-      e `shouldBe` e'
+    it "should have two distinct points" $ property $
+      \e -> point1 e /= point2 e
+    it "should always have point1 < point2" $ property $
+      \e -> point1 e < point2 e 
