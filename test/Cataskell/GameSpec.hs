@@ -493,7 +493,7 @@ sampleGameSpec = do
           let wheatPre = wheat resPre
           let playCard' = mkPlayCard p0 Invention
           let (g', _) = runGame (update playCard') withInvention randRolled
-          let inventions = Set.fromList $ map (invent p0) possibleInventions
+          let inventions = Set.map (invent p0) possibleInventions
           view validActions g' `shouldBe` inventions
           let lumberWheatInvention = PlayerAction p0 (SpecialAction (I (InventionOf mempty { lumber = 1, wheat = 1})))
           let (postLumberWheatInvention, _) = runGame (update lumberWheatInvention) g' randRolled
@@ -507,7 +507,7 @@ sampleGameSpec = do
         it "should allow the current player to obtain all resources of a certain type" $ do
           let playCard' = mkPlayCard p0 Monopoly
           let (g', _) = runGame (update playCard') withMonopoly randRolled
-          let monopolies = Set.fromList $ map (PlayerAction p0 . SpecialAction) possibleMonopolies
+          let monopolies = Set.map (PlayerAction p0 . SpecialAction) possibleMonopolies
           view validActions g' `shouldBe` monopolies
 
           let lumberMonopoly = PlayerAction p0 (SpecialAction (M (MonopolyOn Lumber)))

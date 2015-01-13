@@ -8,10 +8,11 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
-import Data.List ((\\))
 import Control.Lens
 import Data.Monoid
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.List (find)
 import Data.Maybe (mapMaybe, listToMaybe, isNothing)
 import Control.Applicative
@@ -157,13 +158,11 @@ newHarborMap = do
 
 emptyBuildingMap :: BuildingMap
 emptyBuildingMap
-  = let validPoints = filter (\x -> position x == Top || position x == Bottom) allPoints
-    in Map.fromList $ zip validPoints (repeat Nothing)
+  = let validPoints = Set.filter (\x -> position x == Top || position x == Bottom) allPoints
+    in Map.fromSet (const Nothing) validPoints
 
 emptyRoadMap :: RoadMap
-emptyRoadMap
-  = let validEdges = allEdges
-    in Map.fromList $ zip validEdges (repeat Nothing)
+emptyRoadMap = Map.fromSet (const Nothing) allEdges
 
 newBoard :: (RandomGen g) => Rand g Board
 newBoard = do
@@ -189,16 +188,16 @@ getRoads b = Map.mapMaybe id $ view roads b
 getRoadsFor :: Color -> Board -> Map.Map UndirectedEdge OnEdge
 getRoadsFor color' = filterByColor color' . getRoads
 
-freePoints :: Board -> [Point]
+freePoints :: Board -> Set Point
 freePoints b
-  = let occupiedPoints = Map.keys $ getHabitations b
-        nns = concatMap (neighborPoints roadConnections) occupiedPoints
-    in  allPoints \\ (occupiedPoints ++ nns)
+  = let occupiedPoints = Map.keysSet $ getHabitations b
+        nns = Set.unions $ map (neighborPoints roadConnections) (Set.toList occupiedPoints)
+    in  (allPoints Set.\\ occupiedPoints) Set.\\ nns
 
-freeEdges :: Board -> [UndirectedEdge]
+freeEdges :: Board -> Set UndirectedEdge
 freeEdges b
-  = let occupiedEdges = Map.keys $ getRoads b
-    in  allEdges \\ occupiedEdges
+  = let occupiedEdges = Map.keysSet $ getRoads b
+    in  allEdges Set.\\ occupiedEdges
 
 validConstruct :: Construct -> Board -> Bool
 validConstruct bldg brd
@@ -234,7 +233,7 @@ getPointsToHexCentersMap :: Board -> Map.Map Point [HexCenter]
 getPointsToHexCentersMap b = ptsToHexes
   where ptsToHexes = Map.unionsWith (++) $ concatMap mkPtToHCs hexes'
         mkPtToHCs (k, hC') = map (\x -> Map.singleton x [hC']) $ around k
-        around = neighborPoints resourceConnections
+        around = Set.toList . neighborPoints resourceConnections
         hexes' = Map.toList . Map.mapKeys fromCenter $ b ^. hexes
 
 allResourcesFromRoll :: Int -> Board -> Map.Map Color ResourceCount
@@ -258,36 +257,36 @@ allStartingResources op' b = maybe mempty snd pointRes
         ptsToHex = getPointsToHexCentersMap b
         bldg = Map.singleton (op'^.point) op'
 
-roadsToPointsFor :: Color -> Board -> [Point]
+roadsToPointsFor :: Color -> Board -> Set Point
 roadsToPointsFor color' board'
   = let myRoads = getRoadsFor color' board'
-    in  concatMap (\e -> [point1 e, point2 e]) $ Map.keys myRoads
+    in  Set.fromList . concatMap (\e -> [point1 e, point2 e]) $ Map.keys myRoads
 
 -- | A road can be built at the end of another road or a settlement, anywhere there isn't already one
-validRoadsFor :: Color -> Board -> [Construct]
+validRoadsFor :: Color -> Board -> Set Construct
 validRoadsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
         enemyPoints = Map.keys $ Map.filter ((/= color') . color) $ getHabitations board'
         freeEdges' = freeEdges board'
-        pointsAdjacent e = filter (`elem` myPoints) [point1 e, point2 e]
+        pointsAdjacent e = filter (`Set.member` myPoints) [point1 e, point2 e]
         notEnemy ps | length ps == 1 = head ps `notElem` enemyPoints -- if only one endpoint belongs to me, can't build
                     | length ps == 2 = True -- if both endpoints belong to me, I can build even though the enemy is there
                     | otherwise = False
-        validEdges = filter (notEnemy . pointsAdjacent) freeEdges'
-    in map (\e -> built (road $ Just (e, color'))) validEdges
+        validEdges = Set.filter (notEnemy . pointsAdjacent) freeEdges'
+    in Set.map (\e -> built (road $ Just (e, color'))) validEdges
 
-validSettlementsFor :: Color -> Board -> [Construct]
+validSettlementsFor :: Color -> Board -> Set Construct
 validSettlementsFor color' board'
   = let myPoints = roadsToPointsFor color' board'
         freePoints' = freePoints board'
-        validPoints = filter (`elem` myPoints) freePoints'
-    in map (\p -> built (settlement $ Just (p, color'))) validPoints
+        validPoints = Set.filter (`Set.member` myPoints) freePoints'
+    in Set.map (\p -> built (settlement $ Just (p, color'))) validPoints
 
-validCitiesFor :: Color -> Board -> [Construct]
+validCitiesFor :: Color -> Board -> Set Construct
 validCitiesFor color' board'
   = let bldgs = getHabitationsFor color' board'
-        points = Map.keys $ Map.filter (\h -> isSettlement $ Building $ Edifice h) bldgs
-    in  map (\p -> built (city $ Just (p, color'))) points
+        points = Map.keysSet $ Map.filter (isSettlement . Building . Edifice) bldgs
+    in  Set.map (\p -> built (city $ Just (p, color'))) points
 
 longestRoad :: Board -> (Color, Int)
 longestRoad = assert False undefined

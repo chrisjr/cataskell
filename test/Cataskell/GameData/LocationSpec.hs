@@ -5,9 +5,10 @@ import Test.QuickCheck
 import Data.List (sort)
 import Cataskell.GameData.Location
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 instance Arbitrary Point where
-  arbitrary = elements allPoints
+  arbitrary = elements (Set.toList allPoints)
 
 instance Arbitrary CentralPoint where
   arbitrary = elements hexCenterPoints

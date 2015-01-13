@@ -70,7 +70,7 @@ newGame pNames = do
               , _currentPlayer = toPlayerIndex 0
               , _turnAdvanceBy = 1
               , _rolled = Nothing
-              , _validActions = Set.fromList $ possibleInitialSettlements (head $ Map.elems ps) b
+              , _validActions = possibleInitialSettlements (head $ Map.elems ps) b
               , _openTrades = Set.empty
               , _lastAction = Nothing
               , _allCards = cards
@@ -120,6 +120,7 @@ isValid action' = do
   current <- get
   let predicates' = preconditions action'
   let validAct = isRight $ checkAll predicates' current
+  -- let validAct = checkAllUnsafe predicates' current -- will throw errors on precondition failure, for debugging
   return validAct
 
 -- | Creates a predicate that is true when a game is in one of the specified phases.
@@ -467,7 +468,7 @@ possiblePurchases playerIndex' = do
     let roads' = validRoadsFor (color player'') b
     let settlements' = validSettlementsFor (color player'') b
     let cities' = validCitiesFor (color player'') b
-    let buildings' = Set.fromList $ concat [roads', settlements', cities']
+    let buildings' = Set.unions [roads', settlements', cities']
     let res = view resources player''
     let possibleBuildings = Set.filter (\x -> sufficient res (cost $ deconstruct x)) buildings'
     let cards' = Set.fromList [purchase playerIndex' (Potential DevelopmentCard) | sufficient res (cost $ Potential DevelopmentCard)]
@@ -616,7 +617,7 @@ progress = do
                 turnAdvanceBy .= 1
                 initialToNormal
                else do
-                 switchToPlayer next' (Set.fromList nextActionsIfInitial)
+                 switchToPlayer next' nextActionsIfInitial
                  turnAdvanceBy .= newAdv (fromPlayerIndex next')
     Normal -> switchToPlayer next' (Set.singleton (rollFor next'))
     Special _ -> return () -- if progress called in a special phase, do nothing
@@ -668,7 +669,7 @@ toSpecialPhase special' playerIndex' = do
         color' <- preuses (players.ix playerIndex') color
         when (isJust color') $ do
           let color'' = fromJust color'
-          possibleRoads <- uses board (Set.fromList . validRoadsFor color'')
+          possibleRoads <- uses board (validRoadsFor color'')
           validActions .= Set.map (mkFree playerIndex') possibleRoads
       RobberAttack -> do -- ^ If no one has more than 7 resources, move on to MovingRobber.
         mustDiscard <- makeDiscards
@@ -680,8 +681,8 @@ toSpecialPhase special' playerIndex' = do
         if Set.null robberMoves
         then backToNormal
         else validActions .= robberMoves
-      Inventing -> validActions .= Set.fromList (map (invent playerIndex') possibleInventions)
-      Monopolizing -> validActions .= Set.fromList (map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies)
+      Inventing -> validActions .= Set.map (invent playerIndex') possibleInventions
+      Monopolizing -> validActions .= Set.map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
 
 makeDiscards :: (RandomGen g) => GameStateReturning g (Set GameAction)
 makeDiscards = do

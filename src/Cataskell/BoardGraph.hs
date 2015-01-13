@@ -6,6 +6,8 @@ import Data.Graph.Inductive
 import Data.Graph.Inductive.PatriciaTree()
 import Data.Maybe (listToMaybe, fromJust)
 import Control.Applicative ((<$>))
+import Data.Set (Set)
+import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 import Cataskell.GameData.Location ( hexCenterPoints
                                    , hexNeighborhoods
@@ -74,23 +76,23 @@ addHex gr centerPoint
 
 connectCenters :: BoardGraph -> BoardGraph
 connectCenters = insEdgesOnce centerEdges
-  where centerEdges = concatMap (\x -> map dupleToEdge . (zip (repeat $ fromCenter x)) $ getNs x) hexCenterPoints
+  where centerEdges = concatMap (\x -> map (curry dupleToEdge (fromCenter x)) (getNs x)) hexCenterPoints
         getNs = map fromCenter . (Map.!) hexNeighborhoods
 
 -- | The Catan board as a graph. Occupancy data is stored in a map (see Cataskell.GameData.Board)
 boardGraph :: BoardGraph
 boardGraph = undir $ connectCenters gr
-             where gr = foldl (addHex) empty hexCenterPoints
+             where gr = foldl addHex empty hexCenterPoints
 
 -- | Count the nodes that satisfy a predicate.
 countNodes :: (Point -> Bool) -> BoardGraph -> Int
 countNodes p gr = length $ filter p $ map snd $ labNodes gr
 
-neighborPoints :: BoardGraph -> Point -> [Point]
+neighborPoints :: BoardGraph -> Point -> Set Point
 neighborPoints gr p
   = let thisNode = fromJust $ getNodeMaybe p gr
         nn = neighbors gr thisNode
-    in  map snd . filter (\(n, _) -> n `elem` nn) $ labNodes gr
+    in  Set.fromList $ map snd . filter (\(n, _) -> n `elem` nn) $ labNodes gr
 
 connections :: (EdgeType -> Bool) -> BoardGraph
 connections etP = elfilter (etP . edgeType) boardGraph
@@ -104,8 +106,8 @@ resourceConnections = connections (== ToCenter)
 roadConnections :: BoardGraph
 roadConnections = connections (== Between)
 
-allEdges :: [UndirectedEdge]
-allEdges = map (\(_, _, x) -> x) $ labEdges roadConnections
+allEdges :: Set UndirectedEdge
+allEdges = Set.fromList $ map (\(_, _, x) -> x) $ labEdges roadConnections
 
 boardPrint :: BoardGraph -> IO ()
 boardPrint = prettyPrint

@@ -9,6 +9,7 @@ import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 
 import Data.Monoid (mempty)
+import qualified Data.Set as Set
 import Control.Applicative ((<$>), (<*>))
 import Data.Maybe
 import Control.Lens hiding (elements)
@@ -24,10 +25,10 @@ instance Arbitrary DiscardAction where
     return $ DiscardAction { _resourcesDiscarding = r, _amountToDiscard = t}
 
 instance Arbitrary Monopoly where
-  arbitrary = elements $ map (^?! monopoly) possibleMonopolies
+  arbitrary = elements . map (^?! monopoly) $ Set.toList possibleMonopolies
 
 instance Arbitrary Invention where
-  arbitrary = elements $ map (InventionOf) possibleInventions
+  arbitrary = elements . map InventionOf $ Set.toList possibleInventions
 
 instance Arbitrary SpecialAction where
   arbitrary = do

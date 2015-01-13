@@ -11,6 +11,8 @@ import Cataskell.GameData.Player
 
 import Control.Lens
 import Data.Monoid (mempty)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 import GHC.Generics (Generic)
 
@@ -125,10 +127,10 @@ purchase pI item' = PlayerAction { _actor = pI
 mkSettlement :: (Player, Point) -> Construct
 mkSettlement (player', p') = built . settlement $ Just (p', color player')
 
-possibleInitialSettlements :: Player -> Board -> [GameAction]
+possibleInitialSettlements :: Player -> Board -> Set GameAction
 possibleInitialSettlements player' b
   = let ps = freePoints b
-    in  map mkInitialSettlement $ zip (repeat player') ps
+    in  Set.map (curry mkInitialSettlement player') ps
 
 initialRoadsFor :: Player -> OnPoint -> RoadMap -> [GameAction]
 initialRoadsFor player' o' roads'
@@ -217,12 +219,12 @@ resCombinationsForTotal i = map (\(a,b,c,d,e) -> ResourceCount a b c d e) tuples
   where tuples = [ (a,b,c,d,e) | a <- is, b <- is, c <- is, d <- is, e <- is, sum [a,b,c,d,e] == i]
         is = [0..i]
 
-possibleInventions :: [ResourceCount]
-possibleInventions = resCombinationsForTotal 2
+possibleInventions :: Set ResourceCount
+possibleInventions = Set.fromList $ resCombinationsForTotal 2
 
-possibleMonopolies :: [SpecialAction]
-possibleMonopolies = map (M . MonopolyOn) resTypes
-  where resTypes = [Lumber, Ore, Wool, Wheat, Brick]
+possibleMonopolies :: Set SpecialAction
+possibleMonopolies = Set.map (M . MonopolyOn) resTypes
+  where resTypes = Set.fromList [Lumber, Ore, Wool, Wheat, Brick]
 
 mkEndTurn :: PlayerIndex -> GameAction
 mkEndTurn pI = PlayerAction

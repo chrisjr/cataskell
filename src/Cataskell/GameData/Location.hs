@@ -24,7 +24,9 @@ module Cataskell.GameData.Location
 ) where
 
 import Cataskell.Util
-import Data.List (delete, nub)
+import Data.List (delete)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import GHC.Generics (Generic)
@@ -95,8 +97,8 @@ pointsAroundHex centerPoint
         p6 = Point { coord = hexCoord + (0, -1), position = Bottom }  
     in  [p1, p2, p3, p4, p5, p6]
 
-allPoints :: [Point]
-allPoints = nub $ concatMap pointsAroundHex hexCenterPoints
+allPoints :: Set Point
+allPoints = Set.fromList $ concatMap pointsAroundHex hexCenterPoints
 
 mkHexPointsAndEdges :: CentralPoint -> ([Point], [UndirectedEdge])
 mkHexPointsAndEdges centerPoint
@@ -130,6 +132,6 @@ mkEdge (a,b,p1) (c,d,p2) = UndirectedEdge (Point (a,b) p1) (Point (c,d) p2)
 
 edgeType :: UndirectedEdge -> EdgeType
 edgeType e | all (== Center) positions = BetweenCenters
-           | any (== Center) positions && any (/= Center) positions = ToCenter
+           | Center `elem` positions && any (/= Center) positions = ToCenter
            | otherwise = Between
     where positions = map position [point1 e, point2 e]

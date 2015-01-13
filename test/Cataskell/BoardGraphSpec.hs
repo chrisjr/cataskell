@@ -4,14 +4,15 @@ import Test.Hspec
 import Test.QuickCheck
 import Cataskell.BoardGraph
 import Cataskell.GameData.Location
-import Data.List
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Maybe
 import Data.Tuple (swap)
 import Data.Graph.Inductive.Basic (elfilter)
 import Data.Graph.Inductive.Graph (empty, labEdges, labNodes, neighbors)
 
 instance Arbitrary UndirectedEdge where
-  arbitrary = elements allEdges
+  arbitrary = elements (Set.toList allEdges)
 
 main :: IO ()
 main = hspec spec
@@ -30,10 +31,10 @@ spec = do
     it "is connected around the outside" $ do
       let edges = labEdges $ elfilter (\x -> edgeType x == Between) hex
       length edges `shouldBe` (12 :: Int)
-      let pairs = sort $ map (\(x,y,_) -> (x,y)) edges
-      let oneway = [(2,3), (3,4), (4,5), (5,6), (6,7), (7,2)] 
-      pairs `shouldBe` sort (oneway ++ map swap oneway)
-  
+      let pairs = Set.fromList $ map (\(x,y,_) -> (x,y)) edges
+      let oneway = Set.fromList [(2,3), (3,4), (4,5), (5,6), (6,7), (7,2)] 
+      pairs `shouldBe` Set.union oneway (Set.map swap oneway)
+
   describe "A board graph" $ do
     it "has 19 hexes" $ do
       let centers = filter (\x -> position x == Center) . map snd $ labNodes boardGraph
@@ -43,22 +44,22 @@ spec = do
                   bottom' = zip f2 (r 5 0) ++ zip f2 (r 4 1) ++ zip f2 (r 3 2)
                   r = replicate
                   f2 = [-2..]
-      (sort $ map coord centers) `shouldBe` sort cells
+      (Set.fromList $ map coord centers) `shouldBe` Set.fromList cells
     it "has 54 intersections" $ do
       countNodes isIntersection boardGraph `shouldBe` (54 :: Int)
       countNodes (isPos Top) boardGraph `shouldBe` (27 :: Int)
       countNodes (isPos Bottom) boardGraph `shouldBe` (27 :: Int)
     it "has 6 top/bottom points in each center's neighborhood" $ do
       let centers = map mkCenter hexCoords
-      let neighborhoods = map (filter isIntersection . nub . neighborPoints boardGraph) centers
-      all (\x -> length x == 6) neighborhoods `shouldBe` True
+      let neighborhoods = map (Set.filter isIntersection . neighborPoints boardGraph) centers
+      neighborhoods `shouldSatisfy` all ((== 6) . Set.size)
     it "should return the top/bottom neighbors of a specified point" $ do
       let hC = (0, 0)
       let p = Point hC Center
-      let pNeighbors = tail . fst . mkHexPointsAndEdges $ toCenter p
-      (sort . filter isIntersection $ neighborPoints boardGraph p) `shouldBe` sort pNeighbors
+      let pNeighbors = Set.fromList $ tail . fst . mkHexPointsAndEdges $ toCenter p
+      Set.filter isIntersection (neighborPoints boardGraph p) `shouldBe` pNeighbors
     it "should be linked between centers" $ do
       let centers = map mkCenter hexCoords
-      let centerNeighborPoints = sort . map (sort . map mkCenter . neighborCoords) $ hexCoords
-      let centerNeighborhoods = sort $ map (sort . neighborPoints centerConnections) centers
+      let centerNeighborPoints = Set.fromList . map (Set.fromList . map mkCenter . neighborCoords) $ hexCoords
+      let centerNeighborhoods = Set.fromList $ map (neighborPoints centerConnections) centers
       centerNeighborhoods `shouldBe` centerNeighborPoints

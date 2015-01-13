@@ -14,6 +14,8 @@ import Cataskell.GameData.Location
 import Cataskell.Util
 import Data.List
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Monoid (mempty)
 import Data.Maybe
 import Control.Lens hiding (elements)
@@ -169,11 +171,11 @@ buildingMapSpec = do
     it "should start off with no buildings and no roads" $ property $
       \board -> view buildings (board :: Board) == emptyBuildingMap
     it "can be queried for open points" $ property $
-      \board -> length (freePoints (board :: Board)) == 54
+      \board -> Set.size (freePoints (board :: Board)) == 54
     it "can be queried for open points after building" $ property $
       \p board -> let bldg = built . settlement $ Just ((p :: Point), Blue)
                       board' = build bldg (board :: Board)
-                      l = length (freePoints board')
+                      l = Set.size (freePoints board')
                   in  l == 51 || l == 50 -- at least 3 points now off limits, possibly 4
     it "can be queried for colors affected by a roll" $ do
       let board = evalRand newBoard $ mkStdGen 0
@@ -198,13 +200,13 @@ blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Botto
                 es = map (uncurry UndirectedEdge) . mapMaybe listToDuple $ windowed 2 ps
             in mkRoadMap es Blue
 
-validEdges :: [UndirectedEdge]
-validEdges = [mkEdge (1,-1,Top) (0,-3, Bottom), mkEdge (1,-3,Bottom) (0,-1,Top)]
+validEdges :: Set UndirectedEdge
+validEdges = Set.fromList [mkEdge (1,-1,Top) (0,-3, Bottom), mkEdge (1,-3,Bottom) (0,-1,Top)]
 
-invalidEdges :: [UndirectedEdge]
-invalidEdges = [ mkEdge (2,-3,Bottom) (1,-1,Top)
-               , mkEdge (1,-2,Top) (2,-3,Bottom)
-               , mkEdge (2,-2, Top) (3,-3, Bottom)]
+invalidEdges :: Set UndirectedEdge
+invalidEdges = Set.fromList [ mkEdge (2,-3,Bottom) (1,-1,Top)
+                            , mkEdge (1,-2,Top) (2,-3,Bottom)
+                            , mkEdge (2,-2, Top) (3,-3, Bottom)]
 
 addedEdge :: UndirectedEdge
 addedEdge = mkEdge (2,-3, Bottom) (2,-2, Top)
@@ -219,44 +221,35 @@ functionsSpec = do
       \board construct -> validConstruct (construct :: Construct) (board :: Board) ==>
         board /= build construct board
   describe "validRoadsFor" $ do
-    it "should never return duplicates" $ property $
-      \board c -> let vr = validRoadsFor (c :: Color) board
-                  in vr == nub vr
     it "should never return more than 72 options" $ property $
       \board c -> let vr = validRoadsFor (c :: Color) board
-                  in length vr <= 72
+                  in Set.size vr <= 72
     it "should never include an existing road among valid options" $ property $
-      \board c -> let rm' = Map.keys $ getRoads (board :: Board)
+      \board c -> let rm' = Map.keysSet $ getRoads (board :: Board)
                       vr = validRoadsFor (c :: Color) board
-                      vr' = map (^?! onEdge.edge) vr
-                  in  not $ any (`elem` rm') vr'
+                      vr' = Set.map (^?! onEdge.edge) vr
+                  in  (rm' `Set.intersection` vr') `shouldSatisfy` Set.null
     context "when an enemy building is on one of the endpoints" $ do
       let isEmpty = Map.null . Map.mapMaybe id
       it "should prohibit building if player only controls one side" $ property $
         \rt -> let b = fromRTBoard rt
                    hasNeeded = isNothing (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty (_buildings b))
-               in hasNeeded ==> sort (map getE $ validRoadsFor Blue b) == sort validEdges
+               in hasNeeded ==> (Set.map getE $ validRoadsFor Blue b) == validEdges
       it "should allow building if player controls both sides" $ property $
         \rt -> let b = fromRTBoard rt
                    hasNeeded = not (isNothing (join $ Map.lookup addedEdge (_roads b)) || isEmpty (_buildings b))
-               in hasNeeded ==> sort (map getE $ validRoadsFor Blue b) == sort (invalidEdges ++ validEdges)
+               in hasNeeded ==> (Set.map getE $ validRoadsFor Blue b) == Set.union invalidEdges validEdges
   describe "validSettlementsFor" $ do
-    it "should never return duplicates" $ property $
-      \board c -> let vs = validSettlementsFor (c :: Color) board
-                  in vs == nub vs
     it "should never include an existing settlement among valid options" $ property $
-      \board c -> let sm' = Map.keys $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
+      \board c -> let sm' = Map.keysSet $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
                       vs = validSettlementsFor (c :: Color) board
-                      vs' = map (^?! onPoint.point) vs
-                  in  not $ any (`elem` sm') vs'
+                      vs' = Set.map (^?! onPoint.point) vs
+                  in  (sm' `Set.intersection` vs') `shouldSatisfy` Set.null
   describe "validCitiesFor" $ do
-    it "should never return duplicates" $ property $
-      \board c -> let vc = validCitiesFor (c :: Color) board
-                  in vc == nub vc
     it "should return all points that have settlements" $ property $ 
-      \board c -> let sp = Map.keys . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
-                      vcp = mapMaybe (^?onPoint.point) $ validCitiesFor c board
-                  in sort sp == sort vcp
+      \board c -> let sp = Map.keysSet . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
+                      vcp = mapSetMaybe (^?onPoint.point) $ validCitiesFor c board
+                  in sp == vcp
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
