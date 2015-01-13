@@ -189,18 +189,18 @@ gameStateReturningSpec =
                           others = Map.keysSet $ evalGame otherPlayers g (mkStdGen 0)
                       in toJS g $ current `Set.notMember` others
     context "possibleAccepts" $
-      it "should generate accepts when an offer is present" $ property $ 
+      it "should generate accepts when an offer is present and others can fulfill it" $ property $ 
         \(Blind ng) -> let g = fromNormalGame ng
                            openTrades' = g^.openTrades
-                           offer' = findS (isJust . toOffer) openTrades'
-                           hasAcceptedAlready = Set.filter isAccept openTrades'
-                           f x = let ask' = x^?! offer.asking
-                                     asker' = x^?! offer.offeredBy
+                           offer' = firstMaybe $ mapSetMaybe toOffer openTrades'
+                           hasRepliedAlready = Set.filter (\x -> isReject x || isAccept x) openTrades'
+                           f x = let ask' = x ^. asking
+                                     asker' = x ^. offeredBy
                                  in findKeyWhere (\p -> sufficient (p^.resources) ask' && (p^.playerIndex /= asker')) (g^.players)
                            hasEnough = fmap f offer'
                            oh = liftM2 (,) offer' (join hasEnough)
-                           allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offer.offeredBy, p'] g) oh
-                       in Set.null hasAcceptedAlready && allExist == Just True ==> 
+                           allExist = fmap (\(offer'', p') -> playersExist' [offer''^.offeredBy, p'] g) oh
+                       in Set.null hasRepliedAlready && allExist == Just True ==> 
                          let stdGen = mkStdGen 0
                              accepts'' = evalGame possibleAccepts g stdGen
                          in toJS g $ not $ Set.null accepts''
@@ -220,17 +220,21 @@ gameStateReturningSpec =
       let offerAndAcceptGame = set openTrades (Set.fromList [Offer offer', accept'^?!action.trade]) offerGame
       let getFromGame x g = evalGame x g (mkStdGen 0)
       let actionsFromGame = getFromGame possibleTradeActions
-      it "should generate an accept when offer is present" $
+      it "should generate an accept when offer is present and another can fulfill" $
         actionsFromGame offerGame `shouldSatisfy` Set.member accept'
       it "should generate a complete when offer and acceptance are present" $
         actionsFromGame offerAndAcceptGame `shouldSatisfy` Set.member complete'
 
       let tradesFrom game' = getFromGame (use openTrades) (game' :: Game)
       let checkIfAny cImplies = anyS cImplies . tradesFrom
+      let checkIfValidOffer g = let offer' = firstMaybe $ mapSetMaybe toOffer $ tradesFrom g 
+                                    oA = fmap (\x -> (x^.offeredBy, x^.asking)) offer'
+                                    couldRespond = fmap (\(o, x) -> findKeyValueWhere (\pI p -> pI /= o && sufficient (p^.resources) x) (g^.players)) oA
+                                in isJust couldRespond
       let checkFor x game' = let acts' = actionsFromGame (game' :: Game)
                              in  anyS ((== Just True) . fmap x . preview (action.trade)) acts'
-      it "should always generate an accept when offers are present" $ property $
-        \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) g ==>
+      it "should generate an accept when offers are present and others can fulfill" $ property $
+        \(Blind ng) -> let g = fromNormalGame ng in checkIfValidOffer g ==>
           toJS g $ checkFor isAccept g
       it "should always generate a reject when offers are present" $ property $
         \(Blind ng) -> let g = fromNormalGame ng in checkIfAny (isJust . toOffer) (g :: Game) ==>

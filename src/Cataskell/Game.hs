@@ -494,15 +494,14 @@ simpleOffers = do
   let offers = mkOffer <$> [currentPlayer'] <*> canOffer <*> mightWant
   return $ Set.fromList offers
 
-canReplyToTrade :: (RandomGen g) => GameStateReturning g (GameAction -> Bool)
-canReplyToTrade = do
+cannotReplyToTrade :: (RandomGen g) => GameStateReturning g (Set PlayerIndex)
+cannotReplyToTrade = do
   openTrades' <- use openTrades
   currentPlayer' <- use currentPlayer
   let existingAccepts = Set.filter isAccept openTrades'
   let existingRejects = Set.filter isReject openTrades'
   let alreadyReplied = Set.union (mapSetMaybe (^?accepter) existingAccepts) (mapSetMaybe (^?rejecter) existingRejects)
-  let checkP a = (a^.actor /= currentPlayer') && (a^.actor) `Set.notMember` alreadyReplied
-  return checkP
+  return $ Set.union (Set.singleton currentPlayer') alreadyReplied
 
 openOffer :: (RandomGen g) => GameStateReturning g (Maybe TradeOffer)
 openOffer = do
@@ -517,21 +516,21 @@ extantAccepts = do
 possibleAccepts :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleAccepts = do
   offer' <- openOffer
-  canReply <- canReplyToTrade
   if isJust offer'
   then do
     let offer'' = fromJust offer'
     acceptances <- mkAccept offer''
-    return $ Set.filter canReply acceptances
+    return acceptances
   else return Set.empty
 
 possibleRejects :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleRejects = do
   offer' <- openOffer
-  canReply <- canReplyToTrade
+  cannotReply <- cannotReplyToTrade
   otherIs <- liftM Map.keysSet otherPlayers
-  let rejects = fmap (\x -> Set.map (reject x Nothing) otherIs) offer'
-  return $ maybe Set.empty (Set.filter canReply) rejects
+  let otherIs' = otherIs Set.\\ cannotReply
+  let rejects = fmap (\x -> Set.map (reject x Nothing) otherIs') offer'
+  return $ maybe Set.empty id rejects
 
 originatedWith :: TradeOffer -> PlayerIndex -> Bool
 originatedWith offer' playerIndex' = (offer'^.offeredBy) == playerIndex'
@@ -575,9 +574,10 @@ otherPlayers = do
 mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g (Set GameAction)
 mkAccept offer' = do
   ps <- otherPlayers
+  cannotReply <- cannotReplyToTrade
   let ps' = Map.filter (sufficient (offer'^.asking) . view resources) ps
   let couldAccept = Map.keysSet ps'
-  return $ Set.map (accept offer') couldAccept
+  return $ Set.map (accept offer') (couldAccept Set.\\ cannotReply)
 
 possibleDevelopmentCards :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleDevelopmentCards = do
