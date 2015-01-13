@@ -153,11 +153,12 @@ gameInvariantSpec = do
       \game -> let res' = evalGame (liftM (Map.map (^.resources)) (use players)) game (mkStdGen 0)
                in  all nonNegative $ Map.elems res'
     it "should deduct resources when a valid purchase is made" $ property $
-      \(Blind ng) pI -> 
+      \(Blind ng) -> 
        let game = fromNormalGame ng
            vA = game ^. validActions
            purchase' = findS (isJust . preview (action.item.building)) vA
            allExist = allS (`playersExistFor'` game) vA
+           pI = game ^. currentPlayer
            bldg = purchase' >>= preview (action.item.building)
        in isJust bldg && allExist ==>
          let oldRes = game ^. players . ix pI . resources
