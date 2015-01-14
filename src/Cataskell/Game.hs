@@ -11,6 +11,7 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Control.Applicative ((<$>), (<*>), (<|>))
+import Control.Arrow ((&&&))
 import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe
@@ -716,8 +717,18 @@ wonBy pI = do
 randomAct :: (RandomGen g) => GameState g
 randomAct = do
   vA <- use validActions
-  act' <- uniform (Set.toList vA)
-  update act'
+  unless (Set.null vA) $ do
+    act' <- uniform (Set.toList vA)
+    update act'
+
+-- | Choose a random valid action with specified weights (useful for testing purposes)
+randomActWeighted :: (RandomGen g) => (GameAction -> Rational) -> GameState g
+randomActWeighted weight = do
+  vA <- use validActions
+  let weighted = map (id &&& weight) (Set.toList vA)
+  unless (null weighted || (fromRational (sum (map snd weighted)) :: Double) == 0.0) $ do
+    act' <- fromList weighted
+    update act'
 
 -- | Force a particular roll and update (useful for testing purposes).
 forceRoll :: (RandomGen g) => Int -> GameState g

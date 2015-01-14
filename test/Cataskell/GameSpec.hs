@@ -59,15 +59,38 @@ toTradeGame x | x ^. phase == Normal && not (Set.null (x^.openTrades)) = TradeGa
 fromTradeGame :: TradeGame -> Game
 fromTradeGame (TradeGame x) = x
 
+newtype PurchaseGame = PurchaseGame Game
+  deriving (Eq, Ord, Show, Read)
+
+toPurchaseGame :: Game -> PurchaseGame
+toPurchaseGame x | x ^. phase == Normal && not (Set.null (Set.filter (isJust . (^? action.item)) (x^.validActions))) = PurchaseGame x
+                 | otherwise = error "No purchases"
+
+fromPurchaseGame :: PurchaseGame -> Game
+fromPurchaseGame (PurchaseGame x) = x
+
+newtype EndGame = EndGame Game
+  deriving (Eq, Ord, Show, Read)
+
+toEndGame :: Game -> EndGame
+toEndGame x | x ^. phase == End = EndGame x
+            | otherwise = error "Not in end state"
+
+fromEndGame :: EndGame -> Game
+fromEndGame (EndGame x) = x
+
 mkSteps :: (RandomGen g) => Rand g Int
 mkSteps = getRandomR (0, 200)
 
 mkGame :: (RandomGen g) => Rand g Game
-mkGame = do
+mkGame = mkSteps >>= mkGame' Nothing
+
+mkGame' :: (RandomGen g) => Maybe (GameAction -> Rational) -> Int -> Rand g Game
+mkGame' w steps = do
   names <- uniform [["1", "2", "3"], ["1", "2", "3", "4"]]
   initialG <- newGame names
-  steps <- mkSteps
-  foldM (\acc _ -> (execStateT randomAct) acc) initialG [0..steps]
+  let r = maybe randomAct randomActWeighted w
+  foldM (\acc _ -> execStateT r acc) initialG [0..steps]
 
 mkGames :: (RandomGen g) => Rand g [Game]
 mkGames = replicateM 200 mkGame
@@ -105,7 +128,12 @@ instance Arbitrary NormalGame where
   shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
 
 instance Arbitrary TradeGame where
-  arbitrary = TradeGame <$> elements (filter (\g -> (g^.phase == Normal) && not (Set.null (g^.openTrades))) randomGames)
+  arbitrary = toTradeGame <$> elements (filter (\g -> (g^.phase == Normal) && not (Set.null (g^.openTrades))) randomGames)
+  -- shrink tg = map toTradeGame $ shrink $ fromTradeGame tg
+
+instance Arbitrary PurchaseGame where
+  arbitrary = toPurchaseGame <$> elements 
+    (filter (\g -> (g^.phase == Normal) && not (Set.null (Set.filter (isJust . (^? action.item)) (g^.validActions)))) randomGames)
   -- shrink tg = map toTradeGame $ shrink $ fromTradeGame tg
 
 instance Arbitrary InitialGame where
@@ -113,6 +141,29 @@ instance Arbitrary InitialGame where
     stdGen <- arbitrary :: Gen StdGen
     names <- elements [["1", "2", "3"], ["1", "2", "3", "4"]]
     return $ toInitialGame $ evalRand (newGame names) stdGen
+
+weights :: GameAction -> Rational
+weights (PlayerAction _ act')
+  = case act' of
+      BuildForFree _ -> 1.0
+      SpecialAction _ -> 1.0
+      EndTurn -> 1.0
+      PlayCard _ -> 1.0
+      Purchase (Building (Edifice (OnPoint{}))) -> 2.0
+      Purchase _ -> 0.5 -- any other purchase less likely
+      Trade _ -> 0.0
+      _ -> 1.0
+
+lateGame :: StdGen -> Gen Game
+lateGame stdGen = sized $ \n ->
+  do k <- choose (1000, 1000+n)
+     return $ evalRand (mkGame' (Just weights) k) stdGen
+
+instance Arbitrary EndGame where
+  arbitrary = do
+    stdGen <- arbitrary :: Gen StdGen
+    game <- lateGame stdGen `suchThat` ((== End) . view phase)
+    return $ toEndGame game
 
 -- newtype GameStateStd = GameStateStd (StateT Game (RandT StdGen Identity) ())
 
@@ -170,8 +221,8 @@ gameInvariantSpec = do
       \game -> let res' = evalGame (liftM (Map.map (^.resources)) (use players)) game (mkStdGen 0)
                in  all nonNegative $ Map.elems res'
     it "should deduct resources when a valid purchase is made" $ property $
-      \(Blind ng) -> 
-       let game = fromNormalGame ng
+      \(Blind pg) -> 
+       let game = fromPurchaseGame pg
            vA = game ^. validActions
            purchase' = findS (isJust . preview (action.item.building)) vA
            allExist = allS (`playersExistFor'` game) vA
@@ -563,8 +614,7 @@ sampleGameSpec = do
           pRes `shouldSatisfy` all (\r -> lumber r == 0 || lumber r == totalLumber)
     context "in End phase" $
       it "has no more validActions" $ property $
-        \(Blind g) -> view phase (g :: Game) == End ==>
-          toJS g $ Set.null $ view validActions g
+        \(Blind g) -> toJS g $ Set.null $ view validActions g
   describe "updateBonuses" $ do
     context "when comparing roads" $ do
       it "should grant the LongestRoad when the first player has a road of length 5" $ do
