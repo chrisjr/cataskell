@@ -202,7 +202,7 @@ blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Botto
             in mkRoadMap es Blue
 
 validEdges :: Set UndirectedEdge
-validEdges = Set.fromList [L.mkEdge (1,-1,Top) (0,-3, Bottom), L.mkEdge (1,-3,Bottom) (0,-1,Top)]
+validEdges = Set.fromList [L.mkEdge (-1,-1,Top) (0,-3, Bottom), L.mkEdge (1,-3,Bottom) (0,-1,Top)]
 
 invalidEdges :: Set UndirectedEdge
 invalidEdges = Set.fromList [ L.mkEdge (2,-3,Bottom) (1,-1,Top)
@@ -235,11 +235,11 @@ functionsSpec = do
       it "should prohibit building if player only controls one side" $ property $
         \rt -> let b = fromRTBoard rt
                    hasNeeded = isNothing (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty' (_buildings b))
-               in hasNeeded ==> Set.map getE (validRoadsFor Blue b) == validEdges
+               in hasNeeded ==> Set.map getE (validRoadsFor Blue b) === validEdges
       it "should allow building if player controls both sides" $ property $
         \rt -> let b = fromRTBoard rt
-                   hasNeeded = not (isNothing (join $ Map.lookup addedEdge (_roads b)) || isEmpty' (_buildings b))
-               in hasNeeded ==> Set.map getE (validRoadsFor Blue b) == Set.union invalidEdges validEdges
+                   hasNeeded = isJust (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty' (_buildings b))
+               in hasNeeded ==> Set.map getE (validRoadsFor Blue b) === Set.union invalidEdges validEdges
   describe "validSettlementsFor" $
     it "should never include an existing settlement among valid options" $ property $
       \board c -> let sm' = Map.keysSet $ Map.filter (\x -> x^.buildingType == Settlement) $ getHabitations (board :: Board)
