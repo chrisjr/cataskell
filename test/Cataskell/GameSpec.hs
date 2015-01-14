@@ -2,7 +2,6 @@ module Cataskell.GameSpec (main, spec, toJS) where
 
 import Test.Hspec
 import Test.QuickCheck
-import Test.QuickCheck.Modifiers (Blind)
 import Cataskell.Game
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -104,7 +103,7 @@ instance (Arbitrary a, Ord a) => Arbitrary (Set a) where
 
 instance Arbitrary Game where
   arbitrary = elements randomGames
-  shrink g = tail $ Game <$> [_phase g]
+{-  shrink g = tail $ Game <$> [_phase g]
                     <*> shrink' (_board g)
                     <*> shrinkPlayers
                     <*> [_currentPlayer g]
@@ -122,10 +121,10 @@ instance Arbitrary Game where
                               necessaryPlayers = Map.filterWithKey (\k _ -> k `Set.member` ps) (_players g)
                               needed = over (mapped.constructed) onlyReal necessaryPlayers
                           in  if Map.size (_players g) /= Map.size needed then [_players g, needed] else [needed]
-
+-}
 instance Arbitrary NormalGame where
   arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
-  shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
+  -- shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
 
 instance Arbitrary TradeGame where
   arbitrary = toTradeGame <$> elements (filter (\g -> (g^.phase == Normal) && not (Set.null (g^.openTrades))) randomGames)

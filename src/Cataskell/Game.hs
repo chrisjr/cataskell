@@ -518,23 +518,23 @@ extantAccepts = do
   openTrades' <- use openTrades
   return $ Set.filter isAccept openTrades'
 
+mkAccepts :: Set PlayerIndex -> Set PlayerIndex -> TradeOffer -> Set GameAction
+mkAccepts couldAccept cannotReply tradeOffer
+  = Set.map (accept tradeOffer) (couldAccept Set.\\ cannotReply)
+
 possibleAccepts :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleAccepts = do
   offer' <- openOffer
-  maybe (return Set.empty) mkAccept offer' 
+  ps <- otherPlayers
+  cannotReply <- cannotReplyToTrade
+  let couldAccept = fmap (\x -> Map.keysSet $ Map.filter (\p -> sufficient (p^.resources) (x^.asking)) ps) offer'
+  let accepts = liftM3 mkAccepts couldAccept (Just cannotReply) offer'
+  return $ fromMaybe Set.empty accepts
 
 otherPlayers :: (RandomGen g) => GameStateReturning g (Map.Map PlayerIndex Player)
 otherPlayers = do
   current <- use currentPlayer
   uses players (Map.filter ((/= current) . view playerIndex))
-
-mkAccept :: (RandomGen g) => TradeOffer -> GameStateReturning g (Set GameAction)
-mkAccept offer' = do
-  ps <- otherPlayers
-  cannotReply <- cannotReplyToTrade
-  let ps' = Map.filter (sufficient (offer'^.asking) . view resources) ps
-  let couldAccept = Map.keysSet ps'
-  return $ Set.map (accept offer') (couldAccept Set.\\ cannotReply)
 
 possibleRejects :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleRejects = do
