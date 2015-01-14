@@ -83,6 +83,9 @@ runGame stModify game = runRand (execStateT stModify game)
 evalGame :: (RandomGen g) => GameStateReturning g a -> Game -> g -> a
 evalGame stReturn game = evalRand (evalStateT stReturn game)
 
+execGame :: (RandomGen g) => GameState g -> Game -> g -> Game
+execGame stModify game = evalRand (execStateT stModify game)
+
 findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
   maybeI <- uses players $ findKeyWhere ((== c) . color)

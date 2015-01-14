@@ -15,7 +15,7 @@ import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Maybe (fromJust, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromJust, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
@@ -339,17 +339,20 @@ gameStateReturningSpec =
     context "getCard" $
       it "should add a card to a player's newCards field" $ property $
         \(Blind ng) -> let g = fromNormalGame ng
-                           cardIs = views allCards head g
-                           c' = Card cardIs
+                           topcard = views allCards listToMaybe g
+                           c' = fmap Card topcard
                            pI = view currentPlayer g
-                           hasNewCard x = cardIs `elem` view (players . ix pI . newCards) x
-                           hasCard x = c' `elem` view (players . ix pI . constructed) x
+                           hasNewCard x = fmap (`elem` view (players . ix pI . newCards) x) topcard
+                           hasCard x = fmap (`elem` view (players . ix pI . constructed) x) c'
                            vA = view validActions g
                            endTurn = findS ((== EndTurn) . view action) vA
-                           f x = let g' = fst $ runGame (update x) g (mkStdGen 0)
-                                 in not (hasNewCard g') && hasCard g'
-                           doesntKeep = maybe True f endTurn
-                       in isJust endTurn ==> toJS g $ not (hasNewCard g) && doesntKeep
+                       in hasNewCard g == Just False && isJust endTurn ==> 
+                         let r = mkStdGen 0
+                             g' = execGame getCard g r
+                             f end = let afterEndTurn = execGame (update end) g' r
+                                     in hasNewCard afterEndTurn == Just False && hasCard afterEndTurn == Just True
+                             doesntKeep = maybe False f endTurn
+                         in toJS g' doesntKeep
     context "makeDiscards" $
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
