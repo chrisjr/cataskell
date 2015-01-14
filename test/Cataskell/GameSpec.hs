@@ -352,7 +352,7 @@ gameStateReturningSpec =
                              f end = let afterEndTurn = execGame (update end) g' r
                                      in hasNewCard afterEndTurn == Just False && hasCard afterEndTurn == Just True
                              doesntKeep = maybe False f endTurn
-                         in toJS g' doesntKeep
+                         in toJS g' $ hasNewCard g' == Just True && doesntKeep
     context "makeDiscards" $
       it "should generate discards for players with >7 resources" $ do
         let setAll = [ set (players . ix p0 . resources) mempty { ore = 8 }
