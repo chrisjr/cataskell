@@ -103,7 +103,7 @@ instance (Arbitrary a, Ord a) => Arbitrary (Set a) where
 
 instance Arbitrary Game where
   arbitrary = elements randomGames
-{-  shrink g = tail $ Game <$> [_phase g]
+  shrink g = tail $ Game <$> [_phase g]
                     <*> shrink' (_board g)
                     <*> shrinkPlayers
                     <*> [_currentPlayer g]
@@ -121,19 +121,19 @@ instance Arbitrary Game where
                               necessaryPlayers = Map.filterWithKey (\k _ -> k `Set.member` ps) (_players g)
                               needed = over (mapped.constructed) onlyReal necessaryPlayers
                           in  if Map.size (_players g) /= Map.size needed then [_players g, needed] else [needed]
--}
+
 instance Arbitrary NormalGame where
   arbitrary = NormalGame <$> elements (filter ((== Normal) . view phase) randomGames)
-  -- shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
+  shrink ng = map toNormalGame $ shrink $ fromNormalGame ng
 
 instance Arbitrary TradeGame where
   arbitrary = toTradeGame <$> elements (filter (\g -> (g^.phase == Normal) && not (Set.null (g^.openTrades))) randomGames)
-  -- shrink tg = map toTradeGame $ shrink $ fromTradeGame tg
+  shrink tg = map toTradeGame $ shrink $ fromTradeGame tg
 
 instance Arbitrary PurchaseGame where
   arbitrary = toPurchaseGame <$> elements 
     (filter (\g -> (g^.phase == Normal) && not (Set.null (Set.filter (isJust . (^? action.item)) (g^.validActions)))) randomGames)
-  -- shrink tg = map toTradeGame $ shrink $ fromTradeGame tg
+  shrink pg = map toPurchaseGame $ shrink $ fromPurchaseGame pg
 
 instance Arbitrary InitialGame where
   arbitrary = do
@@ -244,7 +244,7 @@ actionsFromGame = getFromGame (use validActions)
 checkIfValidOffer :: Game -> Bool
 checkIfValidOffer g = let offer' = firstMaybe $ mapSetMaybe toOffer $ tradesFrom g 
                           oA = fmap (\x -> (x^.offeredBy, x^.asking)) offer'
-                          couldRespond = fmap (\(o, x) -> findKeyValueWhere (\pI p -> pI /= o && sufficient (p^.resources) x) (g^.players)) oA
+                          couldRespond = join $ fmap (\(o, x) -> findKeyValueWhere (\pI p -> pI /= o && sufficient (p^.resources) x) (g^.players)) oA
                       in isJust couldRespond
 
 tradesFrom :: Game -> Set TradeAction
@@ -303,17 +303,19 @@ gameStateReturningSpec =
           toJS g $ checkForPossibleTrade isComplete g
     let game = head $ filter ((== Normal) . (^.phase)) randomGames
     context "possibleTradeActions" $ do
-      let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} (toPlayerIndex 0)
-      let accept' = accept offer' (toPlayerIndex 1)
+      let rand = mkStdGen 0
+      let offer' = TradeOffer mempty {ore = 1} mempty {wheat = 1} p0
+      let accept' = accept offer' p1
       let complete' = fromJust $ complete $ accept'^?!action.trade
-      let setAll = [ set (players . ix (toPlayerIndex 0) . resources) mempty { ore = 1 }
-                   , set (players . ix (toPlayerIndex 1) . resources) mempty { wheat = 1 }
-                   , set (players . ix (toPlayerIndex 2) . resources) mempty
-                   , set openTrades (Set.singleton (Offer offer'))
-                   , set currentPlayer (toPlayerIndex 0)
+      let setAll = [ set (players . ix p0. resources) mempty { ore = 1 }
+                   , set (players . ix p1. resources) mempty { wheat = 1 }
+                   , set (players . ix p2 . resources) mempty
+                   , set openTrades Set.empty
+                   , set currentPlayer p0
                    ]
-      let offerGame = foldr (.) id setAll game
-      let offerAndAcceptGame = set openTrades (Set.fromList [Offer offer', accept'^?!action.trade]) offerGame
+      let preOfferGame = foldr (.) id setAll game
+      let offerGame = execGame (update PlayerAction { _actor = p0, _action = Trade (Offer offer')}) preOfferGame rand
+      let offerAndAcceptGame = execGame (update accept') offerGame rand
       it "should generate an accept when offer is present and another can fulfill" $
         actionsFromGame offerGame `shouldSatisfy` Set.member accept'
       it "should generate a complete when offer and acceptance are present" $
@@ -448,7 +450,7 @@ sampleGameSpec = do
 
         let beforeTradeP1 = furtherAlong^.players.ix pI.resources
 
-        let (g', r') = runGame (update pOffer') furtherAlong randRolled
+        let g' = execGame (update pOffer') furtherAlong randRolled
         let others = views players (Map.filterWithKey (\k _ -> k /= pI)) g'
         let otherIs = Map.keysSet others
         let acceptancesAll = Set.map (accept tradeOffer') otherIs
@@ -458,7 +460,7 @@ sampleGameSpec = do
         let acceptances = Set.filter (validAcceptance g') acceptancesAll
         let rejections = Set.map (reject tradeOffer' Nothing) otherIs
 
-        it "should add an offer to the open trades" $ do
+        it "should add an offer to the open trades" $
           view openTrades g' `shouldBe` Set.singleton (Offer tradeOffer')
         it "should allow others to accept or reject" $ do
           let vA = Set.filter isTradeAction $ view validActions g'
@@ -470,7 +472,7 @@ sampleGameSpec = do
           vA `shouldSatisfy` Set.member cancel'
 
         let acceptance = head $ Set.toList acceptances
-        let (accepted, _) = runGame (update acceptance) g' randRolled
+        let accepted = execGame (update acceptance) g' randRolled
 
         let acceptance' = acceptance^?!action.trade
         let acceptedOffer = Offer (acceptance'^.offer)
@@ -481,9 +483,9 @@ sampleGameSpec = do
 
         it "should let another player accept" $ do
           view openTrades accepted `shouldBe` Set.fromList [acceptedOffer, acceptance']
-          let pta = evalGame possibleTradeActions g' randRolled
+          let pta = evalGame possibleTradeActions accepted randRolled
           pta `shouldSatisfy` Set.member complete'
-          let vA = Set.filter isTradeAction $ view validActions g'
+          let vA = Set.filter isTradeAction $ view validActions accepted
           vA `shouldSatisfy` Set.member complete'
 
         let (completed, _) = runGame (update complete') accepted randRolled
@@ -615,8 +617,7 @@ sampleGameSpec = do
           let totalLumber = sum $ map lumber pRes
           pRes `shouldSatisfy` all (\r -> lumber r == 0 || lumber r == totalLumber)
     context "in End phase" $
-      it "has no more validActions" $ property $
-        \(Blind g) -> toJS g $ Set.null $ view validActions g
+      it "has no more validActions" $ pendingWith "how do we generate a game that will end?"
   describe "updateBonuses" $ do
     context "when comparing roads" $ do
       it "should grant the LongestRoad when the first player has a road of length 5" $ do
