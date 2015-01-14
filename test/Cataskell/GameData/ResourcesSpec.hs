@@ -4,7 +4,7 @@ import Test.Hspec
 import Test.QuickCheck
 import Data.Monoid
 import qualified Data.Set as Set
-import Data.List (maximumBy)
+import Data.List (maximumBy, sort)
 import Data.Ord (comparing)
 import Control.Applicative ((<$>))
 import Cataskell.GameData.Basics
@@ -82,6 +82,13 @@ spec = do
   describe "nResOf" $
     it "should produce n resources of the specified type" $ property $
       \i resType -> totalResources (nResOf i resType) == i
+  describe "resCountToList" $ do
+    it "should turn a ResourceCount into a list of ResourceTypes" $ do
+      let res = mempty { lumber = 3, wheat = 3 }
+      let r = resCountToList res
+      sort r `shouldBe` sort (replicate 3 Lumber ++ replicate 3 Wheat)
+    it "should always produce a list of length equal to the total resources" $ property $
+      \res -> totalResources res == length (resCountToList res)
   describe "Harbors" $ do
     let woolH = HarborDiscount mempty { wool = 2}
     let wheatH = HarborDiscount mempty { wheat = 2}

@@ -66,7 +66,8 @@ makeLenses ''MoveRobber
 data SpecialAction
   = M { _monopoly :: Monopoly }
   | I { _invention :: Invention }
-  | R { _moveRobber :: MoveRobber }
+  | MR { _moveRobber :: MoveRobber }
+  | R { _robbed :: PlayerIndex }
   deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''SpecialAction
@@ -240,4 +241,15 @@ mkEndTurn pI = PlayerAction
 mkMoveRobber :: PlayerIndex -> CentralPoint -> GameAction
 mkMoveRobber pI dest = PlayerAction
   { _actor = pI
-  , _action = SpecialAction (R (MoveRobber dest)) }
+  , _action = SpecialAction (MR (MoveRobber dest)) }
+
+mkRob :: PlayerIndex -> PlayerIndex -> GameAction
+mkRob pI robbed' = PlayerAction
+  { _actor = pI
+  , _action = SpecialAction (R robbed') }
+
+isRob :: GameAction -> Bool
+isRob (PlayerAction _ act')
+  = case act' of
+      SpecialAction (R _) -> True
+      _ -> False

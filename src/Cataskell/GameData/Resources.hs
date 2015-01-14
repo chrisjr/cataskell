@@ -88,6 +88,14 @@ filteredResCount resType res
       Brick -> mempty { brick = brick res }
       Ore -> mempty { ore = ore res }      
 
+resCountToList :: ResourceCount -> [ResourceType]
+resCountToList res = lumbers ++ wools ++ wheats ++ bricks ++ ores
+  where lumbers = replicate (lumber res) Lumber
+        wools = replicate (wool res) Wool
+        wheats = replicate (wheat res) Wheat
+        bricks = replicate (brick res) Brick
+        ores = replicate (ore res) Ore
+
 nResOf :: Int -> ResourceType -> ResourceCount
 nResOf i resType
   = case resType of

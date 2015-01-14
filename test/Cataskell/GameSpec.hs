@@ -92,7 +92,7 @@ mkGame' w steps = do
   foldM (\acc _ -> execStateT r acc) initialG [0..steps]
 
 mkGames :: (RandomGen g) => Rand g [Game]
-mkGames = replicateM 200 mkGame
+mkGames = replicateM 250 mkGame
 
 randomGames :: [Game]
 randomGames = evalRand mkGames (mkStdGen 1)
@@ -150,13 +150,33 @@ weights (PlayerAction _ act')
       PlayCard _ -> 1.0
       Purchase (Building (Edifice (OnPoint{}))) -> 2.0
       Purchase _ -> 0.5 -- any other purchase less likely
+      Trade (Exchange _) -> 1.0
       Trade _ -> 0.0
       _ -> 1.0
 
 lateGame :: StdGen -> Gen Game
 lateGame stdGen = sized $ \n ->
-  do k <- choose (1000, 1000+n)
+  do k <- choose (100, 100+n)
      return $ evalRand (mkGame' (Just weights) k) stdGen
+
+newtype LateGame = LateGame Game
+
+toLateGame :: Game -> LateGame
+toLateGame x | hasHighScorer x = LateGame x
+             | otherwise = error "Not high enough scores"
+
+fromLateGame :: LateGame -> Game
+fromLateGame (LateGame game) = game
+
+dummyRand :: StdGen
+dummyRand = mkStdGen 0
+
+hasHighScorer :: Game -> Bool
+hasHighScorer g = let scores' = evalGame otherDisplayScores g dummyRand
+                  in (g^.phase == Normal) && any (>2) (Map.elems scores')
+
+instance Arbitrary LateGame where
+  arbitrary = toLateGame <$> elements (filter hasHighScorer randomGames)
 
 instance Arbitrary EndGame where
   arbitrary = do
@@ -236,7 +256,7 @@ gameInvariantSpec = do
          in toJS game $ newRes === oldRes <> mkNeg (cost (Building bldg'))
 
 getFromGame :: GameStateReturning StdGen a -> Game -> a
-getFromGame x g = evalGame x g (mkStdGen 0)
+getFromGame x g = evalGame x g dummyRand
 
 actionsFromGame :: Game -> Set GameAction
 actionsFromGame = getFromGame (use validActions)
@@ -278,7 +298,7 @@ gameStateReturningSpec =
     context "otherPlayers" $
       it "should return a map excluding the current player" $ property $
         \(Blind g) -> let current = g^.currentPlayer
-                          others = Map.keysSet $ evalGame otherPlayers g (mkStdGen 0)
+                          others = Map.keysSet $ getFromGame otherPlayers g
                       in toJS g $ others == Map.keysSet (g^.players) Set.\\ Set.singleton current
     
     let getHasReplied g = let openTrades' = g^.openTrades
@@ -368,6 +388,24 @@ gameStateReturningSpec =
         let discards = evalGame makeDiscards game' (mkStdGen 0)
         discards `shouldBe` Set.fromList [ mkDiscard (p0, mempty { ore = 4 })
                                          , mkDiscard (p1, mempty { lumber = 4 })]
+    context "robbableSpots" $ do
+      let r = mkStdGen 0
+      it "should return an unoccupied hex (or one occupied by current player) if no enemy player has >2 visible victory points" $ property $
+        \ng -> let g = fromNormalGame ng
+                   others = Map.keysSet $ Map.filter (>2) $ evalGame otherDisplayScores g r
+               in Set.null others ==>
+                 let spots = evalGame robbableSpots g r
+                     currentPlayer' = view currentPlayer g
+                     myColor = color $ fromJust (g^?players.ix currentPlayer')
+                 in  not (null spots) && all (\hc -> all ((== myColor) . color) $ evalGame (neighborBuildings hc) g r) spots
+      it "should return a hex surrounded by other players with >2 visible victory points, if one exists" $ property $
+        \(Blind lg) -> let g = fromLateGame lg
+                           others = Map.keysSet $ Map.filter (>2) $ evalGame otherDisplayScores g r
+                       in not (Set.null others) ==>
+                         let spots = evalGame robbableSpots g r
+                             players' = view players g
+                             vulnerable = Map.elems . Map.map color $ Map.filterWithKey (\k _ -> k `Set.member` others) players'
+                         in not (null spots) && all (\hc -> all (flip elem vulnerable . color) $ evalGame (neighborBuildings hc) g r) spots
 
 sampleGameSpec :: Spec
 sampleGameSpec = do
@@ -453,7 +491,7 @@ sampleGameSpec = do
 
         let beforeTradeP1 = furtherAlong^.players.ix pI.resources
 
-        let g' = execGame (update pOffer') furtherAlong randRolled
+        let g' = execGame (update pOffer') furtherAlong dummyRand
         let others = views players (Map.filterWithKey (\k _ -> k /= pI)) g'
         let otherIs = Map.keysSet others
         let acceptancesAll = Set.map (accept tradeOffer') otherIs
@@ -475,7 +513,7 @@ sampleGameSpec = do
           vA `shouldSatisfy` Set.member cancel'
 
         let acceptance = head $ Set.toList acceptances
-        let accepted = execGame (update acceptance) g' randRolled
+        let accepted = execGame (update acceptance) g' dummyRand
 
         let acceptance' = acceptance^?!action.trade
         let acceptedOffer = Offer (acceptance'^.offer)
@@ -486,12 +524,12 @@ sampleGameSpec = do
 
         it "should let another player accept" $ do
           view openTrades accepted `shouldBe` Set.fromList [acceptedOffer, acceptance']
-          let pta = evalGame possibleTradeActions accepted randRolled
+          let pta = getFromGame possibleTradeActions accepted
           pta `shouldSatisfy` Set.member complete'
           let vA = Set.filter isTradeAction $ view validActions accepted
           vA `shouldSatisfy` Set.member complete'
 
-        let (completed, _) = runGame (update complete') accepted randRolled
+        let completed = execGame (update complete') accepted dummyRand
         let afterTradeP1 = completed^.players.ix pI.resources
         let afterTradeP2 = completed^.players.ix aPI.resources
 
@@ -502,23 +540,23 @@ sampleGameSpec = do
           wheat beforeTradeP1 `shouldSatisfy` (< (wheat afterTradeP1))
           wheat beforeTradeP2 `shouldSatisfy` (> (wheat afterTradeP2))
       it "should transition to Special RobberAttack when a 7 is rolled" $ do
-        let (robbed', _) = runGame updateForRoll rolled7 randRolled
+        let robbed' = execGame updateForRoll rolled7 dummyRand
         view phase robbed' `shouldBe` Special MovingRobber
       it "should transition to Special RobberAttack when a Knight is played" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) Knight
-        let (g', _) = runGame (update playCard') withKnight randRolled
+        let g' = execGame (update playCard') withKnight dummyRand
         view phase g' `shouldBe` Special MovingRobber
       it "should transition to Special FreeRoads when a RoadBuilding card is played" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
-        let (g', _) = runGame (update playCard') withRoadBuilding randRolled
+        let g' = execGame (update playCard') withRoadBuilding dummyRand
         view phase g' `shouldBe` Special (FreeRoads 2)
       it "should transition to Special Inventing when an Invention card is played" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) Invention
-        let (g', _) = runGame (update playCard') withInvention randRolled
+        let g' = execGame (update playCard') withInvention dummyRand
         view phase g' `shouldBe` Special Inventing
       it "should transition to Special Monopolizing when a Monopoly card is played" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) Monopoly
-        let (g', _) = runGame (update playCard') withMonopoly randRolled
+        let g' = execGame (update playCard') withMonopoly dummyRand
         view phase g' `shouldBe` Special Monopolizing
 
     context "in the Special phase" $ do
@@ -529,7 +567,7 @@ sampleGameSpec = do
                      , set rolled $ Just 7
                      ]
         let toRobGame = (foldr (.) id setAll) rolledOnce
-        let (robbedGame, _) = runGame updateForRoll toRobGame randRolled
+        let robbedGame = execGame updateForRoll toRobGame dummyRand
         let disc1 = mkDiscard (p0, mempty { ore = 4 })
         let disc2 = mkDiscard (p1, mempty { wheat = 5 })
         it "should force any players with over 7 resources to discard half" $ do
@@ -537,54 +575,74 @@ sampleGameSpec = do
           let vA = view validActions robbedGame
           vA `shouldBe` Set.fromList [disc1, disc2]
         it "should transition into MovingRobber phase after discards" $ do
-          let (postDiscard0, _) = runGame (update disc1) robbedGame randRolled
-          let (postDiscard, _) = runGame (update disc2) postDiscard0 randRolled
+          let postDiscard0 = execGame (update disc1) robbedGame dummyRand
+          let postDiscard = execGame (update disc2) postDiscard0 dummyRand
           view phase postDiscard `shouldBe` Special MovingRobber
       context "MovingRobber" $
         describe "the player must move the robber" $ do
           let getG x = if x^.phase == Special MovingRobber
                           then x
-                          else getG (execGame randomAct x randRolled)
+                          else getG (execGame randomAct x dummyRand)
+          let isValidRobberMove g a = let pScores = Map.map (view displayScore) $ view players g
+                                          pColors = Map.map color $ view players g
+                                          high = Map.filter (>2) pScores
+                                          acceptableColors = Map.elems $ Map.intersection pColors high
+                                          neighbors' dest = evalGame (neighborBuildings dest) g dummyRand
+                                          checkDest dest = not (null (neighbors' dest)) && all (flip elem acceptableColors . color) (neighbors' dest)
+                                      in case a^.action of
+                                           SpecialAction (MR (MoveRobber dest)) -> checkDest dest
+                                           _ -> False
+          let allValidRobberMove g = allS (isValidRobberMove g) (view validActions g)
           context "when someone has >2 visible victory points" $ do
             specify "to a hex ringed by players with >2 visible victory points" $ property $
-              \(Blind ng) -> let g = fromNormalGame ng
-                                 scores' = evalGame scores (g :: Game) randRolled 
+              \(Blind lg) -> let g = fromLateGame lg
+                                 scores' = Map.elems $ getFromGame otherDisplayScores g
                              in any (>2) scores' ==>
-                                  let g7 = execGame (forceRoll 7) g randRolled
+                                  let g7 = execGame (forceRoll 7) g dummyRand
                                       g' = getG g7
-                                      pScores = Map.map (view score) $ view players g'
-                                      pColors = Map.map color $ view players g'
-                                      high = Map.filter (>2) pScores
-                                      acceptableColors = Map.elems $ Map.intersection pColors high
-                                      vA = view validActions g'
-                                      checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
-                                      isValidRobberMove a = case a^.action of
-                                                              SpecialAction (R (MoveRobber dest)) -> checkDest dest
-                                                              _ -> False
-                                  in  toJS g' $ allS isValidRobberMove vA
-            specify "and should rob one of the players there" $ do
-              pending
+                                  in toJS g' $ allValidRobberMove g'
+            specify "and should rob one of the players there" $ property $
+              \(Blind lg) -> let g = fromLateGame lg
+                                 scores' = Map.elems $ getFromGame otherDisplayScores g
+                                 gR = if any (>2) scores'
+                                        then let g7 = execGame (forceRoll 7) g dummyRand
+                                                 gPost7 = getG g7
+                                             in if allValidRobberMove gPost7 then Just (execGame randomAct gPost7 dummyRand) else Nothing
+                                        else Nothing 
+                             in isJust gR && fmap (anyS isRob . view validActions) gR == Just True ==>
+                                let g' = fromJust gR
+                                    robAction = head (Set.toList (view validActions g'))
+                                    p1' = view currentPlayer g'
+                                    p2' = fromJust $ robAction^?action.specialAction.robbed
+                                    ps = view players g'
+                                    g'' = execGame (update robAction) g' dummyRand
+                                    ps' = view players g''
+                                    beforeRobP1 = totalResources $ view resources (ps Map.! p1')
+                                    beforeRobP2 = totalResources $ view resources (ps Map.! p2')
+                                    afterRobP1 = totalResources $ view resources (ps' Map.! p1')
+                                    afterRobP2 = totalResources $ view resources (ps' Map.! p2')
+                                in (beforeRobP1 + 1) == afterRobP1 && beforeRobP2 == (afterRobP2 + 1)
           specify "to an unoccupied hex, otherwise" $ property $
             \(Blind ng) -> 
                let g = fromNormalGame ng
-                   scores' = evalGame scores g randRolled 
+                   scores' = Map.elems $ getFromGame otherDisplayScores g
                in not (any (>2) scores') ==>
-                       let g7 = execGame (forceRoll 7) g randRolled
+                       let g7 = execGame (forceRoll 7) g dummyRand
                            g' = getG g7
                            vA = view validActions g'
-                           checkDest dest = null $ evalGame (neighborBuildings dest) g' randRolled
+                           checkDest dest = null $ evalGame (neighborBuildings dest) g' dummyRand
                            isValidRobberMove a = case a^.action of
-                                                   SpecialAction (R (MoveRobber dest)) -> checkDest dest
+                                                   SpecialAction (MR (MoveRobber dest)) -> checkDest dest
                                                    _ -> False
                        in  toJS g' $ allS isValidRobberMove vA
       context "FreeRoads" $ do
         let playCard' = mkPlayCard (toPlayerIndex 0) RoadBuilding
-        let (g', _) = runGame (update playCard') withRoadBuilding randRolled
+        let (g', _) = runGame (update playCard') withRoadBuilding dummyRand
         let pI = view currentPlayer g'
         let isFreeRoad x = isJust $ x ^? action.construct.onEdge
 
-        let (built1, _) = runGame randomAct g' randRolled
-        let (built2, _) = runGame randomAct built1 randRolled
+        let (built1, _) = runGame randomAct g' dummyRand
+        let (built2, _) = runGame randomAct built1 dummyRand
 
         it "should allow the current player to build two roads" $ do
           view validActions g' `shouldSatisfy` allS isFreeRoad
@@ -600,11 +658,11 @@ sampleGameSpec = do
           let lumberPre = lumber resPre
           let wheatPre = wheat resPre
           let playCard' = mkPlayCard p0 Invention
-          let (g', _) = runGame (update playCard') withInvention randRolled
+          let (g', _) = runGame (update playCard') withInvention dummyRand
           let inventions = Set.map (invent p0) possibleInventions
           view validActions g' `shouldBe` inventions
           let lumberWheatInvention = PlayerAction p0 (SpecialAction (I (InventionOf mempty { lumber = 1, wheat = 1})))
-          let (postLumberWheatInvention, _) = runGame (update lumberWheatInvention) g' randRolled
+          let (postLumberWheatInvention, _) = runGame (update lumberWheatInvention) g' dummyRand
 
           let resPost = view (players . ix p0 . resources) postLumberWheatInvention
           let lumberPost = lumber resPost
@@ -614,12 +672,12 @@ sampleGameSpec = do
       context "Monopolizing" $
         it "should allow the current player to obtain all resources of a certain type" $ do
           let playCard' = mkPlayCard p0 Monopoly
-          let (g', _) = runGame (update playCard') withMonopoly randRolled
+          let (g', _) = runGame (update playCard') withMonopoly dummyRand
           let monopolies = Set.map (PlayerAction p0 . SpecialAction) possibleMonopolies
           view validActions g' `shouldBe` monopolies
 
           let lumberMonopoly = PlayerAction p0 (SpecialAction (M (MonopolyOn Lumber)))
-          let (postMonopoly, _) = runGame (update lumberMonopoly) g' randRolled
+          let (postMonopoly, _) = runGame (update lumberMonopoly) g' dummyRand
 
           let pRes = Map.elems . Map.map (view resources) $ postMonopoly^.players
           let totalLumber = sum $ map lumber pRes

@@ -34,8 +34,9 @@ instance Arbitrary SpecialAction where
   arbitrary = do
     let m = M <$> arbitrary
     let i = I <$> arbitrary
-    let r = R <$> MoveRobber <$> arbitrary
-    oneof [m, i, r]
+    let mr = MR <$> MoveRobber <$> arbitrary
+    let r = R <$> arbitrary
+    oneof [m, i, mr, r]
 
 instance Arbitrary TradeOffer where
   arbitrary = TradeOffer <$> arbitrary <*> arbitrary <*> arbitrary

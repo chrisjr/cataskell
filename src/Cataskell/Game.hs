@@ -35,6 +35,7 @@ type GameStateReturning g = StateT Game (RandT g Identity)
 data SpecialPhase
   = RobberAttack
   | MovingRobber
+  | Robbing
   | FreeRoads Int
   | Inventing
   | Monopolizing
@@ -96,20 +97,17 @@ findPlayerByColor c = do
 update :: (RandomGen g) => GameAction -> GameState g
 update action' = do
   done <- checkAndExecute action'
-  p <- use phase
-  let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
-  let movedRobber = isJust (action' ^? action.specialAction.moveRobber)
-  
   lastAction .= Just (action', done)
+  
+  let builtFreeRoad = isJust (action' ^? action.construct.onEdge)
+  p <- use phase
   when (done && builtFreeRoad) $ if p == Initial then progress else handleFreeRoads p
-  when (done && p == Special MovingRobber && movedRobber) backToNormal
 
 -- | Move from one game state to the next when a RoadBuilding card was played
 handleFreeRoads :: (RandomGen g) => Phase -> GameState g
 handleFreeRoads phase' = do
-  playerIndex' <- use currentPlayer
   updateBonuses
-  when (phase' == Special (FreeRoads 2)) $ toSpecialPhase (FreeRoads 1) playerIndex'
+  when (phase' == Special (FreeRoads 2)) $ toSpecialPhase (FreeRoads 1)
   when (phase' == Special (FreeRoads 1)) backToNormal
 
 -- | Checks that the action is valid and executes it if so
@@ -232,7 +230,8 @@ preconditions a@(PlayerAction playerIndex' action') = playersExistFor a : reqs
                  SpecialAction x -> case x of
                    M _ -> [phaseOneOf [Special Monopolizing], turnIs playerIndex']
                    I _ -> [phaseOneOf [Special Inventing], turnIs playerIndex']
-                   R _ -> [phaseOneOf [Special MovingRobber], turnIs playerIndex']
+                   MR _ -> [phaseOneOf [Special MovingRobber], turnIs playerIndex']
+                   R _ -> [phaseOneOf [Special Robbing], turnIs playerIndex']
                  PlayCard x -> [ phaseOneOf [Normal]
                                , hasItem (Card x) playerIndex'
                                , turnIs playerIndex'
@@ -285,7 +284,8 @@ doAction act'
           SpecialAction x -> case x of
             M monopoly' -> doMonopoly actorIndex monopoly'
             I invention' -> doInvention actorIndex invention'
-            R moveRobber' -> doMoveRobber moveRobber'
+            MR moveRobber' -> doMoveRobber moveRobber'
+            R robbed' -> doRob robbed'
           Purchase x -> doPurchase actorIndex x >> updateBonuses >> genPlayerActions
           Trade x -> doTrade actorIndex x >> genPlayerActions
           Discard x -> doDiscard actorIndex x
@@ -425,19 +425,17 @@ doDiscard playerIndex' (DiscardAction _ r) = do
   addToResources playerIndex' (mkNeg r)
   discards <- makeDiscards
   validActions .= discards
-  when (Set.null discards) $ do
-    pI <- use currentPlayer
-    toSpecialPhase MovingRobber pI
+  when (Set.null discards) $ toSpecialPhase MovingRobber
 
 doPlayCard :: (RandomGen g) => PlayerIndex -> DevelopmentCard -> GameState g
 doPlayCard playerIndex' card'
   = replaceInventory playerIndex' (Card card') Nothing $ case card' of
-      RoadBuilding -> toSpecialPhase (FreeRoads 2) playerIndex'
+      RoadBuilding -> toSpecialPhase (FreeRoads 2)
       Knight -> do
         updateBonuses
-        toSpecialPhase MovingRobber playerIndex'
-      Invention -> toSpecialPhase Inventing playerIndex'
-      Monopoly -> toSpecialPhase Monopolizing playerIndex'
+        toSpecialPhase MovingRobber
+      Invention -> toSpecialPhase Inventing
+      Monopoly -> toSpecialPhase Monopolizing
       VictoryPoint -> return ()
 
 updateBonuses :: (RandomGen g) => GameState g
@@ -471,6 +469,29 @@ doMoveRobber (MoveRobber dest) = do
   let robberLoc = fromJust $ findKeyWhere _hasRobber h
   board . hexes . ix robberLoc . hasRobber .= False
   board . hexes . ix dest . hasRobber .= True
+  toSpecialPhase Robbing
+
+playersToRob :: (RandomGen g) => GameStateReturning g (Set GameAction)
+playersToRob = do
+  currentPlayer' <- use currentPlayer
+  h <- use (board . hexes)
+  let robberLoc = fromJust $ findKeyWhere _hasRobber h
+  bldgs <- neighborBuildings robberLoc
+  ps <- use players
+  let colors = map color bldgs
+  let ps' = Map.keysSet $ Map.filter (\p -> color p `elem` colors && totalResources (p^.resources) > 0) ps
+  return $ Set.map (mkRob currentPlayer') ps'
+
+doRob :: (RandomGen g) => PlayerIndex -> GameState g
+doRob robbed' = do
+  currentPlayer' <- use currentPlayer
+  pRes <- resourcesOf robbed'
+  let resList = resCountToList pRes
+  unless (null resList) $ do
+    resType <- uniform resList
+    let res = 1 `nResOf` resType
+    addToResources currentPlayer' res
+    assert (sufficient pRes res) addToResources robbed' (mkNeg res)
   backToNormal
 
 doRoll :: (RandomGen g) => GameState g
@@ -572,6 +593,9 @@ otherPlayers = do
   current <- use currentPlayer
   uses players (Map.filter ((/= current) . view playerIndex))
 
+otherDisplayScores :: (RandomGen g) => GameStateReturning g (Map.Map PlayerIndex Int)
+otherDisplayScores = liftM (Map.map (view displayScore)) otherPlayers
+
 possibleRejects :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleRejects = do
   offer' <- openOffer
@@ -639,15 +663,12 @@ neighborBuildings cp = do
 robbableSpots :: (RandomGen g) => GameStateReturning g [CentralPoint]
 robbableSpots = do
   currentPlayer' <- use currentPlayer
-  ps <- use players >>= return . Map.elems
-  ownColor <- preuses (players.ix currentPlayer') color
-  if isJust ownColor
-  then do
-    let ownColor' = fromJust ownColor
-    let playersColors = zip ps (map color ps)
-    let protected = nub $ ownColor':(map snd $ filter (\(p,_) -> view displayScore p <= 2) playersColors)
-    filterM (neighborBuildings >=> return . all (not . flip elem protected) . map color) hexCenterPoints
-  else return []
+  players' <- use players
+  let vulnerable = Map.filterWithKey (\k v -> k /= currentPlayer' && (v^.displayScore) > 2) players'
+  let vulnerableColors = Map.elems $ Map.map color vulnerable
+  if null vulnerableColors
+  then filterM (neighborBuildings >=> return . null) hexCenterPoints -- everyone is protected, so only unoccupied hexes
+  else filterM (neighborBuildings >=> (\x -> return $ not (null x) && all (flip elem vulnerableColors . color) x)) hexCenterPoints
 
 -- | Called on EndTurn action or in initial phase
 progress :: (RandomGen g) => GameState g
@@ -687,7 +708,7 @@ updateForRoll = do
   r' <- use rolled
   currentPlayer' <- use currentPlayer
   case r' of
-    Just 7 -> toSpecialPhase RobberAttack currentPlayer'
+    Just 7 -> toSpecialPhase RobberAttack
     _ -> do
       distributeResources
       genPlayerActions
@@ -712,8 +733,9 @@ backToNormal = do
   phase .= Normal
   genPlayerActions
 
-toSpecialPhase :: (RandomGen g) => SpecialPhase -> PlayerIndex -> GameState g
-toSpecialPhase special' playerIndex' = do
+toSpecialPhase :: (RandomGen g) => SpecialPhase -> GameState g
+toSpecialPhase special'= do
+  playerIndex' <- use currentPlayer
   phase .= Special special'
   openTrades .= Set.empty
   case special' of
@@ -727,12 +749,17 @@ toSpecialPhase special' playerIndex' = do
         mustDiscard <- makeDiscards
         if not $ Set.null mustDiscard
         then validActions .= mustDiscard
-        else toSpecialPhase MovingRobber playerIndex'
+        else toSpecialPhase MovingRobber
       MovingRobber -> do
         robberMoves <- canMoveRobberTo
         if Set.null robberMoves
         then backToNormal
         else validActions .= robberMoves
+      Robbing -> do
+        playersToRob' <- playersToRob
+        if Set.null playersToRob'
+        then backToNormal
+        else validActions .= playersToRob'
       Inventing -> validActions .= Set.map (invent playerIndex') possibleInventions
       Monopolizing -> validActions .= Set.map (PlayerAction playerIndex' . SpecialAction) possibleMonopolies
 
