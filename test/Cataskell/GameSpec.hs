@@ -540,18 +540,22 @@ sampleGameSpec = do
           let (postDiscard0, _) = runGame (update disc1) robbedGame randRolled
           let (postDiscard, _) = runGame (update disc2) postDiscard0 randRolled
           view phase postDiscard `shouldBe` Special MovingRobber
-      context "MovingRobber" $ do
+      context "MovingRobber" $
         describe "the player must move the robber" $ do
+          let getG x = if x^.phase == Special MovingRobber
+                          then x
+                          else getG (execGame randomAct x randRolled)
           context "when someone has >2 visible victory points" $ do
             specify "to a hex ringed by players with >2 visible victory points" $ property $
               \(Blind ng) -> let g = fromNormalGame ng
                                  scores' = evalGame scores (g :: Game) randRolled 
                              in any (>2) scores' ==>
-                                  let (g', _) = runGame (forceRoll 7) g randRolled 
-                                      psScores = zip (map toPlayerIndex [0..3]) scores'
+                                  let g7 = execGame (forceRoll 7) g randRolled
+                                      g' = getG g7
+                                      pScores = Map.map (view score) $ view players g'
                                       pColors = Map.map color $ view players g'
-                                      high = map fst $ filter ((>2) . snd) psScores
-                                      acceptableColors = mapMaybe (`Map.lookup` pColors) high
+                                      high = Map.filter (>2) pScores
+                                      acceptableColors = Map.elems $ Map.intersection pColors high
                                       vA = view validActions g'
                                       checkDest dest = all (`elem` acceptableColors) . map color $ evalGame (neighborBuildings dest) g' randRolled
                                       isValidRobberMove a = case a^.action of
@@ -565,7 +569,8 @@ sampleGameSpec = do
                let g = fromNormalGame ng
                    scores' = evalGame scores g randRolled 
                in not (any (>2) scores') ==>
-                       let (g', _) = runGame (forceRoll 7) g randRolled 
+                       let g7 = execGame (forceRoll 7) g randRolled
+                           g' = getG g7
                            vA = view validActions g'
                            checkDest dest = null $ evalGame (neighborBuildings dest) g' randRolled
                            isValidRobberMove a = case a^.action of
