@@ -266,6 +266,9 @@ gameStateReturningSpec =
     context "simpleOffers" $
       it "should not generate invalid actions" $ property $
         allValid simpleOffers
+    context "simpleExchanges" $
+      it "should not generate invalid actions" $ property $
+        allValid simpleExchanges
     context "possiblePurchases" $
       it "should not generate invalid actions" $ property $
         allValid possiblePurchases

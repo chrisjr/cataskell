@@ -10,7 +10,6 @@ import Cataskell.GameData.Resources
 import Cataskell.GameData.Player
 
 import Control.Lens
-import Data.Monoid (mempty)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
@@ -190,6 +189,13 @@ complete acceptance = do
                                      , _accepter = p2
                                      }
      }
+
+exchange :: PlayerIndex -> ResourceCount -> ResourceCount -> GameAction
+exchange pI offered asked
+  = PlayerAction
+      { _actor = pI
+      , _action = Trade Exchange { _offer = TradeOffer offered asked pI }
+      }
 
 isAccept :: TradeAction -> Bool
 isAccept (Accept{}) = True

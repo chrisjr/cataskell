@@ -15,7 +15,8 @@ import Control.Arrow ((&&&))
 import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe
-import Data.List (elemIndex, nub)
+import Data.List (elemIndex, nub, maximumBy)
+import Data.Ord (comparing)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
@@ -176,6 +177,16 @@ hasResourcesFor cost' pI = Precondition { predicate = enough, label = show pI ++
 hasResourcesForItem :: Item -> PlayerIndex -> Precondition Game
 hasResourcesForItem itemToBuy = hasResourcesFor (cost itemToBuy)
 
+hasHarborsFor :: TradeOffer -> Precondition Game
+hasHarborsFor offer'
+  = let pI = offer'^.offeredBy
+        offered = offer'^.offering
+        ask = offer'^.asking
+        hasHarbors g = let r' = mkStdGen 0
+                           (n, _) = evalGame (totalPossibleViaExchange offered) g r'
+                       in n == totalResources ask
+    in Precondition { predicate = hasHarbors, label = show pI ++ " has right harbors to fulfill exchange " ++ show offer'}
+
 checkM :: Precondition Game -> GameStateReturning g Bool
 checkM p = do
   let pred' = predicate p
@@ -247,7 +258,10 @@ preconditions a@(PlayerAction playerIndex' action') = playersExistFor a : reqs
                                                           , hasResourcesFor (offer'^.asking) accepterIndex'
                                                           , turnIs playerIndex']
                    CancelTrade offer' -> [phaseOneOf [Normal], offerOriginatedWith offer' playerIndex', turnIs playerIndex']
-                   Exchange offer' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.offering) playerIndex', turnIs playerIndex']
+                   Exchange offer' -> [phaseOneOf [Normal]
+                                      , hasResourcesFor (offer'^.offering) playerIndex'
+                                      , turnIs playerIndex'
+                                      , hasHarborsFor offer']
                  Discard (DiscardAction i r) -> [ phaseOneOf [Special RobberAttack]
                                                 , Precondition (\_ -> totalResources r == i) (show action' ++ "satisfies minimum " ++ show i)]
                  EndTurn -> [phaseOneOf [Normal], turnIs playerIndex']
@@ -381,11 +395,16 @@ doTrade playerIndex' tradeAction'
 doExchange :: (RandomGen g) => PlayerIndex -> TradeOffer -> GameState g
 doExchange playerIndex' offer' = do
   let askTotal = totalResources $ offer'^.asking
-  harborFuncs <- getHarbors playerIndex'
-  let canGetTotal = maximum $ map ($ offer'^.offering) $ genericHarborDiscount 4:harborFuncs
+  (canGetTotal, remainder) <- totalPossibleViaExchange (offer'^.offering)
   when (askTotal <= canGetTotal) $ do
-    addToResources playerIndex' $ offer'^.asking
-    addToResources playerIndex' (mkNeg $ offer'^.offering)
+    players . ix playerIndex' . resources .= (remainder <> offer'^.asking)
+    openTrades .= Set.empty
+
+totalPossibleViaExchange :: (RandomGen g) => ResourceCount -> GameStateReturning g (Int, ResourceCount)
+totalPossibleViaExchange res = do
+  currentPlayer' <- use currentPlayer
+  harborFuncs <- getHarbors currentPlayer'
+  return . maximumBy (comparing fst) . map (applyDiscount res) $ Set.toList harborFuncs
 
 getPlayerBuildings :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Map.Map Point OnPoint)
 getPlayerBuildings playerIndex' = do
@@ -393,13 +412,13 @@ getPlayerBuildings playerIndex' = do
   color' <- preuses (players.ix playerIndex') color
   return $ Map.mapMaybe id $ Map.filter (\x -> isJust color' && color `fmap` x == color') $ b^.buildings
 
-getHarbors :: (RandomGen g) => PlayerIndex -> GameStateReturning g [ResourceCount -> Int]
+getHarbors :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set HarborDiscount)
 getHarbors playerIndex' = do
   b <- use board
   playerBuildings <- getPlayerBuildings playerIndex'
   let harbors' = b^.harbors
   let myHarbors = Map.elems $ Map.intersectionWith (\_ harbor' -> harbor') playerBuildings harbors'
-  return $ map harborDiscount myHarbors
+  return $ Set.unions (genericHarborDiscount 4:map harborDiscount myHarbors)
 
 doDiscard :: (RandomGen g) => PlayerIndex -> DiscardAction -> GameState g
 doDiscard playerIndex' (DiscardAction _ r) = do 
@@ -499,6 +518,23 @@ simpleOffers = do
   let offers = mkOffer <$> [currentPlayer'] <*> canOffer <*> mightWant
   return $ Set.fromList offers
 
+-- | Generate all possible exchanges involving 1 resulting resource, given a player's harbors and current resources.
+simpleExchanges :: (RandomGen g) => GameStateReturning g (Set GameAction)
+simpleExchanges = do
+  currentPlayer' <- use currentPlayer
+  pRes <- resourcesOf currentPlayer'
+  harbors' <- getHarbors currentPlayer'
+  let allPossible = filter (\(_, (i,_)) -> i > 0) . map (id &&& applyDiscount pRes) $ Set.toList harbors'
+  if not (null allPossible)
+  then do
+    let possible = resCombinationsForTotal 1
+    let mightWant = filter (not . sufficient pRes) possible
+    let (bestDeal, _) = maximumBy (comparing (fst . snd)) allPossible
+    let canOffer = consumes bestDeal
+    let exchanges = exchange <$> [currentPlayer'] <*> [canOffer] <*> mightWant
+    return $ Set.fromList exchanges
+  else return Set.empty
+
 cannotReplyToTrade :: (RandomGen g) => GameStateReturning g (Set PlayerIndex)
 cannotReplyToTrade = do
   openTrades' <- use openTrades
@@ -568,6 +604,7 @@ possibleTradeActions :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleTradeActions = do
   currentPlayer' <- use currentPlayer
   base <- simpleOffers
+  exchanges' <- simpleExchanges
   offer' <- openOffer
   if isJust offer'
   then do
@@ -576,8 +613,8 @@ possibleTradeActions = do
     rejects' <- possibleRejects
     completes' <- possibleCompletes
     let cancels = Set.fromList [cancel offer'' | offer''^.offeredBy == currentPlayer']
-    return $ Set.unions [accepts', rejects', completes', cancels]
-  else return base
+    return $ Set.unions [accepts', rejects', completes', exchanges', cancels]
+  else return $ Set.union base exchanges'
 
 possibleDevelopmentCards :: (RandomGen g) => GameStateReturning g (Set GameAction)
 possibleDevelopmentCards = do

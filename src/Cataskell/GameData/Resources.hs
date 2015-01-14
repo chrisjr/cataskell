@@ -4,6 +4,8 @@ module Cataskell.GameData.Resources where
 
 import Cataskell.GameData.Basics
 import Data.Monoid
+import Data.Set (Set)
+import qualified Data.Set as Set
 import GHC.Generics (Generic)
 
 data ResourceCount = ResourceCount 
@@ -23,6 +25,9 @@ instance Monoid ResourceCount where
     , brick = brick r1 + brick r2
     , ore = ore r1 + ore r2
     }
+
+data HarborDiscount = HarborDiscount { consumes :: ResourceCount }
+  deriving (Eq, Ord, Show, Read)
 
 totalResources :: ResourceCount -> Int
 totalResources r = lumber r + wool r + wheat r + brick r + ore r
@@ -82,3 +87,37 @@ filteredResCount resType res
       Wheat -> mempty { wheat = wheat res }
       Brick -> mempty { brick = brick res }
       Ore -> mempty { ore = ore res }      
+
+nResOf :: Int -> ResourceType -> ResourceCount
+nResOf i resType
+  = case resType of
+      Lumber -> mempty { lumber = i}
+      Wool -> mempty { wool = i }
+      Wheat -> mempty { wheat = i }
+      Brick -> mempty { brick = i }
+      Ore -> mempty { ore = i }      
+
+genericHarborDiscount :: Int -> Set HarborDiscount
+genericHarborDiscount i
+  = Set.fromList $ map (mkDiscount i) [Lumber, Wool, Wheat, Brick, Ore]
+
+mkDiscount :: Int -> ResourceType -> HarborDiscount
+mkDiscount i resType = HarborDiscount (nResOf i resType)
+
+applyDiscount :: ResourceCount -> HarborDiscount -> (Int, ResourceCount)
+applyDiscount playerRes harbor = go 0 playerRes
+  where res = consumes harbor 
+        go n remainingRes = if not $ sufficient remainingRes res
+                               then (n, remainingRes) 
+                               else go (n+1) (remainingRes <> mkNeg res)
+
+harborDiscount :: Harbor -> Set HarborDiscount
+harborDiscount harbor'
+  = case harbor' of
+      Harbor Hill -> Set.singleton (mkDiscount 2 Brick)
+      Harbor Forest -> Set.singleton (mkDiscount 2 Lumber)
+      Harbor Pasture -> Set.singleton (mkDiscount 2 Wool)
+      Harbor Field -> Set.singleton (mkDiscount 2 Wheat)
+      Harbor Mountain -> Set.singleton (mkDiscount 2 Ore)
+      Harbor Desert -> Set.empty
+      ThreeToOne -> genericHarborDiscount 3

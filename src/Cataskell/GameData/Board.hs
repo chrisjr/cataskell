@@ -133,24 +133,6 @@ harborTypes = replicate 3 ThreeToOne ++
                 , Harbor Field
                 ]
 
-genericHarborDiscount :: Int -> (ResourceCount -> Int)
-genericHarborDiscount i
-  = let f r = case r of
-                ResourceCount a b c d e -> maximum [a,b,c,d,e] `div` i
-    in f
-
-harborDiscount :: Harbor -> (ResourceCount -> Int)
-harborDiscount harbor'
-  = let f = case harbor' of
-              Harbor Hill -> \r -> brick r `div` 2
-              Harbor Forest -> \r -> lumber r `div` 2
-              Harbor Pasture -> \r -> wool r `div` 2
-              Harbor Field -> \r -> wheat r `div` 2
-              Harbor Mountain -> \r -> ore r `div` 2
-              Harbor Desert -> \_ -> 0 -- TODO: should this exist?
-              ThreeToOne -> genericHarborDiscount 3
-    in  f
-
 newHarborMap :: (RandomGen g) => Rand g HarborMap
 newHarborMap = do
   harborPoints' <- shuffleM harborPoints
