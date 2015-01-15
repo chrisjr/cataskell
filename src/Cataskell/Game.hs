@@ -214,8 +214,10 @@ responseNotFromSamePlayer trade'
   = Precondition (\_ -> Just (trade'^.offer.offeredBy) /= otherParty) "Trade response is from a different player"
       where otherParty = (trade' ^? accepter) <|> (trade' ^? rejecter)
 
-scoreFor :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Maybe Int)
-scoreFor pI = preuse (players.ix pI.score)
+currentPlayerScore :: (RandomGen g) => GameStateReturning g Int
+currentPlayerScore = do
+  currentPlayer' <- use currentPlayer
+  liftM fromJust $ preuse (players . ix currentPlayer'.score)
 
 scores :: (RandomGen g) => GameStateReturning g [Int]
 scores = do
@@ -299,8 +301,9 @@ doAction act'
           EndTurn -> do
             transferCards actorIndex
             openTrades .= Set.empty
-            scoreIsNow <- scoreFor actorIndex
-            if scoreIsNow >= Just 10
+            validActions .= Set.empty
+            scoreIsNow <- currentPlayerScore
+            if scoreIsNow >= 10
             then wonBy actorIndex
             else progress
 

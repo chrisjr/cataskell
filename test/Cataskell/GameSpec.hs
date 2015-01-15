@@ -12,6 +12,7 @@ import Control.Monad.Random
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
+import Data.Ord (comparing)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -686,8 +687,15 @@ sampleGameSpec = do
           let totalLumber = sum $ map lumber pRes
           pRes `shouldSatisfy` all (\r -> lumber r == 0 || lumber r == totalLumber)
     context "in End phase" $
-      it "has no more validActions" $
-        pendingWith "how do we generate a game that will end?"
+      it "has no more validActions" $ property $
+        \(Blind lg) -> let g = fromLateGame lg
+                           pI = view currentPlayer g
+                           endTurn = findS (\(PlayerAction _ act') -> act' == EndTurn) (view validActions g)
+                           g' = g & players . ix pI . constructed <>~ replicate 8 (Card VictoryPoint)
+                           g'' = fmap (\end -> execGame (update end) g' dummyRand) endTurn
+                       in isJust g'' ==> 
+                         let finalG = fromJust g''
+                         in toJS finalG $ finalG^.winner == Just pI && Set.null (view validActions finalG)
   describe "updateBonuses" $ do
     let urGame = evalRand (newGame (replicate 4 "")) dummyRand
     let getBonuses pI = view (players . ix pI . bonuses)
