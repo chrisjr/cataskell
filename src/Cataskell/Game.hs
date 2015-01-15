@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 module Cataskell.Game where
 
 import Control.Monad.Identity
@@ -19,7 +20,8 @@ import Data.List (elemIndex, nub, maximumBy)
 import Data.Ord (comparing)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
-import Cataskell.GameData.Board
+import Cataskell.GameData.Board hiding (longestRoad)
+import qualified Cataskell.GameData.Board as B (longestRoad)
 import Cataskell.GameData.Location
 import Cataskell.GameData.Player
 import Cataskell.GameData.Preconditions
@@ -53,6 +55,8 @@ data Game = Game
   , _rolled :: Maybe Int
   , _validActions :: Set GameAction
   , _openTrades :: Set TradeAction
+  , _longestRoad :: Maybe (PlayerIndex, Int)
+  , _largestArmy :: Maybe (PlayerIndex, Int)
   , _lastAction :: Maybe (GameAction, Bool)
   , _allCards :: [DevelopmentCard]
   , _winner :: Maybe PlayerIndex
@@ -75,6 +79,8 @@ newGame pNames = do
               , _rolled = Nothing
               , _validActions = possibleInitialSettlements (head $ Map.elems ps) b
               , _openTrades = Set.empty
+              , _longestRoad = Nothing
+              , _largestArmy = Nothing
               , _lastAction = Nothing
               , _allCards = cards
               , _winner = Nothing }
@@ -438,8 +444,60 @@ doPlayCard playerIndex' card'
       Monopoly -> toSpecialPhase Monopolizing
       VictoryPoint -> return ()
 
+findLongestRoad :: (RandomGen g) => GameStateReturning g (Maybe (PlayerIndex, Int))
+findLongestRoad = do
+  b <- use board
+  ps <- use players
+  let colors = Map.fromList $ map (\(pI, p) -> (color p, pI)) $ Map.toList ps
+  let (c', length') = B.longestRoad b
+  return (Just (colors Map.! c', length'))
+
+findLargestArmy :: (RandomGen g) => GameStateReturning g (Maybe (PlayerIndex, Int))
+findLargestArmy = do
+  ps <- use players
+  let (p, i) = maximumBy (comparing snd) . Map.toList $ Map.map (view knights) ps
+  return (Just (p, i))
+
+removeBonuses :: (RandomGen g) => Bonus -> GameState g
+removeBonuses bonus' = do
+  pIs <- uses players Map.keys
+  forM_ pIs $ \pI -> do
+    oldBonuses <- use (players . ix pI . bonuses) 
+    players . ix pI . bonuses .= Set.filter (/= bonus') oldBonuses
+
 updateBonuses :: (RandomGen g) => GameState g
-updateBonuses = return () -- TODO
+updateBonuses = do
+  newLongestRoadPI <- updateIfLarger longestRoad findLongestRoad 5
+  when (isJust newLongestRoadPI) $ do
+    let pI = fromJust newLongestRoadPI
+    removeBonuses LongestRoad
+    players . ix pI . bonuses <>= Set.singleton LongestRoad
+  newLargestArmyPI <- updateIfLarger largestArmy findLargestArmy 3
+  when (isJust newLargestArmyPI) $ do
+    let pI = fromJust newLargestArmyPI
+    removeBonuses LargestArmy
+    players . ix pI . bonuses <>= Set.singleton LargestArmy
+
+updateIfLarger :: (RandomGen g) => Lens' Game (Maybe (PlayerIndex, Int)) 
+                                -> GameStateReturning g (Maybe (PlayerIndex, Int))
+                                -> Int
+                                -> GameStateReturning g (Maybe PlayerIndex)
+updateIfLarger l trial min' = do
+  currentBest <- use l
+  trial' <- trial
+  case (currentBest, trial') of
+    (Nothing, Nothing) -> return Nothing
+    (Nothing, x@(Just (pI, newI))) -> 
+      if newI >= min' then do
+        l .= x
+        return (Just pI)
+      else return Nothing
+    (Just (_, _), Nothing) -> return Nothing
+    (Just (_, i), x@(Just (pI, newI))) ->
+      if newI > i then do
+        l .= x
+        return (Just pI)
+      else return Nothing
 
 myFoldM :: Monad m => a -> [b] -> (a -> b -> m a) -> m a
 myFoldM a1 lst f = foldM f a1 lst
@@ -706,7 +764,6 @@ switchToPlayer i valids = do
 updateForRoll :: (RandomGen g) => GameState g
 updateForRoll = do
   r' <- use rolled
-  currentPlayer' <- use currentPlayer
   case r' of
     Just 7 -> toSpecialPhase RobberAttack
     _ -> do

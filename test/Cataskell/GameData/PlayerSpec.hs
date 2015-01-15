@@ -32,6 +32,7 @@ instance Arbitrary Player where
                            <*> [_resources p]
                            <*> [filter (isNothing . preview itemType) $ _constructed p]
                            <*> [_newCards p]
+                           <*> [_knights p]
                            <*> [_bonuses p]
 
 instance Arbitrary PlayerIndex where

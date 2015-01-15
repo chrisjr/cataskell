@@ -5,6 +5,7 @@ import Test.QuickCheck
 import Cataskell.Game
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
+import Cataskell.GameData.Board (roads)
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
 import Control.Monad.Random
@@ -25,7 +26,7 @@ import Cataskell.Serialize()
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 import Cataskell.GameData.ActionsSpec()
 import Cataskell.GameData.BasicsSpec()
-import Cataskell.GameData.BoardSpec()
+import Cataskell.GameData.BoardSpec (blueRoadsLonger, whiteRoads)
 import Cataskell.GameData.PlayerSpec()
 
 newtype InitialGame = InitialGame Game
@@ -111,6 +112,8 @@ instance Arbitrary Game where
                     <*> shrink' (_rolled g)
                     <*> shrink' (_validActions g)
                     <*> [_openTrades g]
+                    <*> [_longestRoad g]
+                    <*> [_largestArmy g]
                     <*> [Nothing] -- lastAction
                     <*> shrink' (_allCards g)
                     <*> shrink' (_winner g)
@@ -683,15 +686,46 @@ sampleGameSpec = do
           let totalLumber = sum $ map lumber pRes
           pRes `shouldSatisfy` all (\r -> lumber r == 0 || lumber r == totalLumber)
     context "in End phase" $
-      it "has no more validActions" $ pendingWith "how do we generate a game that will end?"
+      it "has no more validActions" $
+        pendingWith "how do we generate a game that will end?"
   describe "updateBonuses" $ do
+    let urGame = evalRand (newGame (replicate 4 "")) dummyRand
+    let getBonuses pI = view (players . ix pI . bonuses)
     context "when comparing roads" $ do
+      let g = urGame & board.roads .~ blueRoadsLonger
+      let g' = execGame updateBonuses g dummyRand
+      let colorToPlayer = Map.fromList . map (\(k,v) -> (color v, k)) $ Map.toList (g^.players)
+      let pI = colorToPlayer Map.! Blue
       it "should grant the LongestRoad when the first player has a road of length 5" $ do
-        pending
+        g^.longestRoad `shouldBe` Nothing
+        g'^.longestRoad `shouldBe` Just (pI, 5)
+        getBonuses pI g' `shouldBe` Set.singleton LongestRoad
       it "should transfer the LongestRoad when a player's road has been surpassed" $ do
-        pending
+        let pI' = colorToPlayer Map.! White
+        let g'' = (board.roads) <>~ whiteRoads $ g'
+        let updated = execGame updateBonuses g'' dummyRand
+        updated^.longestRoad `shouldBe` Just (pI', 6)
+        getBonuses pI updated `shouldSatisfy` Set.null
+        getBonuses pI' updated `shouldBe` Set.singleton LongestRoad
     context "when comparing armies" $ do
+      let g = urGame & players . ix p0 . knights .~ 3
+      let g' = execGame updateBonuses g dummyRand
       it "should grant the LargestArmy when the first player has an army of size 3" $ do
-        pending
+        let gl = g' ^. largestArmy
+        gl `shouldBe` Just (p0, 3)
+        getBonuses p0 g' `shouldBe` Set.singleton LargestArmy
+        getBonuses p1 g' `shouldSatisfy` Set.null
+      it "should leave the bonus unchanged when another player meets that size" $ do
+        let g'' = g' & players . ix p1 . knights .~ 3
+        let g''' = execGame updateBonuses g'' dummyRand
+        let gl = g''' ^. largestArmy
+        gl `shouldBe` Just (p0, 3)
+        getBonuses p0 g''' `shouldBe` Set.singleton LargestArmy
+        getBonuses p1 g''' `shouldSatisfy` Set.null
       it "should transfer the LargestArmy when a player's army has been surpassed" $ do
-        pending
+        let g'' = g' & players . ix p1 . knights .~ 4
+        let g''' = execGame updateBonuses g'' dummyRand
+        let gl = g''' ^. largestArmy
+        gl `shouldBe` Just (p1, 4)
+        getBonuses p0 g''' `shouldSatisfy` Set.null
+        getBonuses p1 g''' `shouldBe` Set.singleton LargestArmy

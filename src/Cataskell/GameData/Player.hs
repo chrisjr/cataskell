@@ -8,6 +8,8 @@ import Cataskell.GameData.Resources
 import Data.Monoid (mempty)
 import Data.Maybe
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Control.Lens
 import GHC.Generics (Generic)
 
@@ -29,7 +31,8 @@ data Player = Player
   , _resources :: ResourceCount
   , _constructed :: [Item]
   , _newCards :: [DevelopmentCard]
-  , _bonuses :: [Bonus]
+  , _knights :: Int
+  , _bonuses :: Set Bonus
   } deriving (Eq, Ord, Show, Read, Generic)
 
 makeLenses ''Player
@@ -45,7 +48,8 @@ mkPlayer (i, c, n) = Player
   , _resources = mempty
   , _constructed = initialItems
   , _newCards = []
-  , _bonuses = []
+  , _knights = 0
+  , _bonuses = Set.empty
   }
 
 mkPlayers :: [String] -> Map.Map PlayerIndex Player
@@ -66,7 +70,7 @@ displayScore :: Getter Player Int
 displayScore = to displayScore'
   where displayScore' p = regularPoints p + bonusPoints p
         regularPoints p = totalPointsOf . filter (not . isVictoryPoint) $ p ^. constructed
-        bonusPoints = views bonuses totalPointsOf
+        bonusPoints = views bonuses (totalPointsOf . Set.toList)
 
 score :: Getter Player Int
 score = to score'

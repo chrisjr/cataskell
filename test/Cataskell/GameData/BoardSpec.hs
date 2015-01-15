@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Cataskell.GameData.BoardSpec (main, spec) where
+module Cataskell.GameData.BoardSpec (main, spec, blueRoadsLonger, whiteRoads) where
 
 import Test.Hspec
 import Control.Exception
@@ -201,6 +201,15 @@ blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Botto
                 es = map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
             in mkRoadMap es Blue
 
+blueRoadsLonger :: RoadMap
+blueRoadsLonger = let ps = [ Point (0, -3) Bottom
+                           , Point (0,-2) Top
+                           , Point (1,-3) Bottom
+                           , Point (1,-2) Top
+                           , Point (2,-3) Bottom
+                           , Point (2,-2) Top]
+                      es = map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
+                  in mkRoadMap es Blue
 validEdges :: Set UndirectedEdge
 validEdges = Set.fromList [L.mkEdge (-1,-1,Top) (0,-3, Bottom), L.mkEdge (1,-3,Bottom) (0,-1,Top)]
 
@@ -214,6 +223,15 @@ addedEdge = L.mkEdge (2,-3, Bottom) (2,-2, Top)
 
 blueRoads2 :: RoadMap
 blueRoads2 = Map.union (mkRoadMap [addedEdge] Blue) blueRoads
+
+longerEdges :: [UndirectedEdge]
+longerEdges = let ps = [ Point (0, -3) Bottom, Point (-1,-1) Top, Point (1,-2) Bottom 
+                       , Point (-2,0) Top, Point (-2, -1) Bottom, Point (-3,-1) Top
+                       , Point (-2,0) Bottom]
+              in map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
+
+whiteRoads :: RoadMap
+whiteRoads = mkRoadMap longerEdges White
 
 functionsSpec :: Spec
 functionsSpec = do
@@ -262,24 +280,20 @@ functionsSpec = do
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
-    let ps = [Point (0, -3) Bottom, Point (-1,-1) Top, Point (1,-2) Bottom, Point (-2,0) Top,
-              Point (-2, -1) Bottom, Point (-3,-1) Top]
-    let es = map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
     it "should return the color of the player with the longest road and its length" $ do
       let blueLongest = Map.union blueRoads roads'
       let blueLongestBoard = board' { _roads = blueLongest }
       longestRoad blueLongestBoard `shouldBe` (Blue, 3)
     it "should return a different longest road when a longer road appears" $ do
-      let redRoads = mkRoadMap es Red
+      let redRoads = mkRoadMap longerEdges Red
       let redLongest = Map.unions [redRoads, blueRoads, roads']
       let redLongestBoard = board' { _roads = redLongest }
-      longestRoad redLongestBoard `shouldBe` (Red, 5)
+      longestRoad redLongestBoard `shouldBe` (Red, 6)
     it "should not count roads interrupted by enemy settlements" $ do
-      let whiteRoads = mkRoadMap es White
       let whiteLongestRoads = Map.union whiteRoads roads'
       let whiteLongest = board' { _roads = whiteLongestRoads }
-      longestRoad whiteLongest `shouldBe` (White, 5)
-      let p = ps !! 3
+      longestRoad whiteLongest `shouldBe` (White, 6)
+      let p = Point (-2,0) Top
       let interruption = Map.union (interruptSettlement p) emptyBuildingMap
       let whiteLongestInterrupted = board' { _roads = whiteLongestRoads, _buildings = interruption }
       longestRoad whiteLongestInterrupted `shouldBe` (White, 3)
