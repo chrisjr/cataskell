@@ -7,6 +7,7 @@ import Control.Lens
 import System.Random
 import System.Environment (getArgs)
 import Control.Exception (assert)
+import Data.List (findIndex)
 import Data.Aeson
 import qualified Data.ByteString.Lazy as B
 import System.IO (openBinaryFile, IOMode(WriteMode), hClose)
@@ -14,13 +15,11 @@ import System.IO (openBinaryFile, IOMode(WriteMode), hClose)
 getToEnd :: Int -> Int -> Int -> (Int, [Game], Bool)
 getToEnd maxIter maxSeed seed
   = let (initialGame, r') = runRand (newGame ["1","2","3"]) (mkStdGen seed)
-        gs = iterate (\(x, r) -> runRand (execStateT randomActGoodInitial x) r) (initialGame, r')
-        maxIterGs = take maxIter . takeWhile ((/= End) . view phase) $ map fst gs
+        gs = map fst $ iterate (\(x, r) -> runRand (execStateT randomActGoodInitial x) r) (initialGame, r')
+        endsAt = findIndex ((== End) . view phase) gs
     in if seed < maxSeed
-       then if view phase (last maxIterGs) == End
-              then (seed, maxIterGs, True)
-              else getToEnd maxIter maxSeed (seed+1)
-       else (seed, maxIterGs, False) 
+       then maybe (getToEnd maxIter maxSeed (seed+1)) (\end -> (seed, take (end+1) gs, True)) endsAt
+       else (seed, take maxIter gs, False) 
 
 main :: IO ()
 main = do

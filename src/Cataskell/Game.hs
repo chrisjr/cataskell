@@ -95,7 +95,7 @@ execGame :: (RandomGen g) => GameState g -> Game -> g -> Game
 execGame stModify game = evalRand (execStateT stModify game)
 
 pointsNeeded :: Int
-pointsNeeded = 5
+pointsNeeded = 10
 
 findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
@@ -873,7 +873,7 @@ randomActGoodInitial = do
                                in case r of
                                   r' | r' < 7 -> r' - 1
                                   r' | r' > 7 -> 13 - r'
-                                  _ -> 0)
+                                  _ -> -6)
   let evalOption (PlayerAction _ (BuildForFree (Edifice x@(OnPoint{})))) = total $ allSurroundingHexes x b
       evalOption _ = 0
   if p == Initial && not (Set.null options)
