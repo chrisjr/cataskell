@@ -227,6 +227,12 @@ gameInvariantSpec = do
                           i' = evalRand (evalStateT (findPlayerByColor Blue) g') (stdGen :: StdGen)
                           i = fromPlayerIndex i'
                           in i >= 0 && i < 4
+    it "after (# players) * 4 updates, must be in Normal phase" $ property $
+      \game -> let g = fromInitialGame game
+                   l = Map.size $ view players g
+                   normalTurn = l * 4
+                   gs = iterate (uncurry (runGame randomAct)) (g, dummyRand)
+               in (gs !! normalTurn)^._1.phase == Normal
   describe "Game invariants" $ do
     it "has a non-zero list of next actions, unless at the end" $ property $
       \game -> let n = (game :: Game) ^.validActions.to Set.size

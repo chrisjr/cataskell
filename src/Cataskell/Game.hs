@@ -16,7 +16,7 @@ import Control.Arrow ((&&&))
 import Data.Either
 import Data.Monoid (mempty, (<>))
 import Data.Maybe
-import Data.List (elemIndex, nub, maximumBy)
+import Data.List (elemIndex, nub, maximumBy, minimumBy)
 import Data.Ord (comparing)
 import Cataskell.GameData.Actions
 import Cataskell.GameData.Basics
@@ -93,6 +93,9 @@ evalGame stReturn game = evalRand (evalStateT stReturn game)
 
 execGame :: (RandomGen g) => GameState g -> Game -> g -> Game
 execGame stModify game = evalRand (execStateT stModify game)
+
+pointsNeeded :: Int
+pointsNeeded = 5
 
 findPlayerByColor :: (RandomGen g) => Color -> GameStateReturning g PlayerIndex
 findPlayerByColor c = do
@@ -303,7 +306,7 @@ doAction act'
             openTrades .= Set.empty
             validActions .= Set.empty
             scoreIsNow <- currentPlayerScore
-            if scoreIsNow >= 10
+            if scoreIsNow >= pointsNeeded
             then wonBy actorIndex
             else progress
 
@@ -740,8 +743,8 @@ progress = do
   totalPlayers <- uses players Map.size
   p <- use phase
   let next' = toPlayerIndex $ (totalPlayers + currentPlayerIndex + adv) `mod` totalPlayers
-  let newAdv x | x == 3 && adv == 1 = 0
-               | x == 3 && adv == 0 = -1
+  let newAdv x | x == (totalPlayers - 1) && adv == 1 = 0
+               | x == (totalPlayers - 1) && adv == 0 = -1
                | otherwise = adv
   nextPlayer <- uses players (Map.! next')
   nextActionsIfInitial <- uses board (possibleInitialSettlements nextPlayer)
@@ -856,6 +859,26 @@ randomActWeighted weight = do
   unless (null weighted || (fromRational (sum (map snd weighted)) :: Double) == 0.0) $ do
     act' <- fromList weighted
     update act'
+
+randomActGoodInitial :: (RandomGen g) => GameState g
+randomActGoodInitial = do
+  p <- use phase
+  vA <- use validActions
+  let options = Set.filter (\(PlayerAction _ x) -> case x of 
+                               BuildForFree (Edifice OnPoint{}) -> True
+                               _ -> False) 
+                            vA
+  b <- use board
+  let total = sum . map (\x -> let r = view roll x
+                               in case r of
+                                  r' | r' < 7 -> r' - 1
+                                  r' | r' > 7 -> 13 - r'
+                                  _ -> 0)
+  let evalOption (PlayerAction _ (BuildForFree (Edifice x@(OnPoint{})))) = total $ allSurroundingHexes x b
+      evalOption _ = 0
+  if p == Initial && not (Set.null options)
+  then update $ maximumBy (comparing evalOption) $ Set.toList options
+  else randomAct
 
 -- | Force a particular roll and update (useful for testing purposes).
 forceRoll :: (RandomGen g) => Int -> GameState g

@@ -234,12 +234,14 @@ allResourcesFromRoll r b = colorSums
         rollRelevant = Map.map (filter ((== r) . _roll)) $ getPointsToHexCentersMap b
         bldgs = getHabitations b
 
+allSurroundingHexes :: OnPoint -> Board -> [HexCenter]
+allSurroundingHexes op' b = ptsToHex Map.! bldgPoint
+  where ptsToHex = getPointsToHexCentersMap b
+        bldgPoint = op'^.point
+
 allStartingResources :: OnPoint -> Board -> ResourceCount
-allStartingResources op' b = maybe mempty snd pointRes
-  where pointRes = listToMaybe $ Map.toList bldgRes
-        bldgRes = Map.intersectionWith (\_ hexes' -> foldl (<>) mempty $ map _resource hexes') bldg ptsToHex
-        ptsToHex = getPointsToHexCentersMap b
-        bldg = Map.singleton (op'^.point) op'
+allStartingResources op' b = foldl (<>) mempty (map (view resource) hexes')
+  where hexes' = allSurroundingHexes op' b
 
 roadsToPointsFor :: Color -> Board -> Set Point
 roadsToPointsFor color' board'
