@@ -34,7 +34,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   describe "A Item" $ do
     it "can be a settlement, city, road, or development card" $ do
       let s = unbuilt settlement

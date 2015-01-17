@@ -123,7 +123,10 @@ data EdgeType
 data UndirectedEdge = UndirectedEdge
   { point1 :: Point
   , point2 :: Point
-  } deriving (Eq, Ord, Show, Read,Generic)
+  } deriving (Eq, Ord, Read, Generic)
+
+instance Show UndirectedEdge where
+  show (UndirectedEdge (Point (a,b) pos1) (Point (c,d) pos2)) = "mkEdge " ++ show (a,b,pos1) ++ " " ++ show (c,d, pos2)
 
 mkUndirectedEdge :: Point -> Point -> UndirectedEdge
 mkUndirectedEdge p1 p2 

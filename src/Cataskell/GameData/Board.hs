@@ -3,21 +3,24 @@
 
 module Cataskell.GameData.Board where
 
-import Cataskell.BoardGraph (allEdges, BoardGraph, neighborPoints, resourceConnections, roadGraph, roadConnections)
+import Cataskell.BoardGraph (allEdges, getNodeMaybe, BoardGraph, neighborPoints, pathTree, resourceConnections, roadGraph, roadConnections)
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Location
 import Cataskell.GameData.Resources
 import GHC.Generics (Generic)
 import Control.Lens
+import Control.Monad (join, liftM2)
 import Data.Graph.Inductive
 import Data.Graph.Inductive.PatriciaTree()
 import Data.Monoid
 import qualified Data.Map.Strict as Map
-import Data.List (maximumBy)
+import Data.List (maximumBy, elemIndex)
 import Data.Ord (comparing)
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Maybe (mapMaybe, listToMaybe, isNothing)
+import Data.Tree (Tree)
+import qualified Data.Tree as Tree (levels, drawTree, drawForest)
+import Data.Maybe (mapMaybe, listToMaybe, isNothing, fromJust, fromMaybe)
 import Control.Exception (assert)
 import Control.Monad.Random
 import System.Random.Shuffle
@@ -283,11 +286,19 @@ roadGraphForColor color' board'
         gr' = roadGraph (Map.keysSet roads') (enemyPoints color' board')
     in undir gr'
 
+maybeLongest :: Gr UndirectedEdge (UndirectedEdge, UndirectedEdge) -> Maybe Int
+maybeLongest gr = do
+  let depth s = map snd $ level s gr
+  let depths = concatMap depth (nodes gr)
+  if not (null depths)
+    then Just (1 + maximum depths)
+    else Nothing
+
 longestRoadForColor :: Board -> Color -> (Color, Int)
 longestRoadForColor board' color'
   = let gr = roadGraphForColor color' board'
-        components' = map length $ components gr
-    in if not (null components') then (color', maximum components') else (color', 0)
+        pathLength = maybeLongest gr
+    in (color', fromMaybe 0 pathLength)
 
 longestRoad :: Board -> (Color, Int)
 longestRoad board'

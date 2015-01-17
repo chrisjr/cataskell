@@ -26,7 +26,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   describe "A ResourceCount" $ do
     it "should start empty" $ do
       totalResources mempty `shouldBe` (0 :: Int)

@@ -18,7 +18,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   describe "A HexCoord" $ do
     let aroundNegOneTwo = [((-1),1), (0,1), (0,2),((-1),3),((-2),3), ((-2),2)]
     let n = [(0, 0), (1, 0), (1, 1), (1, 2), (0, 3)]

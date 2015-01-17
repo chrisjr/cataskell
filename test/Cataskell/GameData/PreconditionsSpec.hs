@@ -8,7 +8,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   let pred' i = (i :: Int) == 0
   let p = Precondition { predicate = pred', label = "isZero" }
   

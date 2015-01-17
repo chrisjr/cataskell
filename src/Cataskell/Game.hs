@@ -260,7 +260,9 @@ preconditions a@(PlayerAction playerIndex' action') = playersExistFor a : reqs
                                    , hasResourcesFor (offer'^.offering) playerIndex'
                                    , turnIs playerIndex'
                                    , Precondition (\_ -> (offer'^.offering) /= (offer'^.asking)) "Offer and ask cannot be the same"]
-                   Accept offer' accepter' -> [phaseOneOf [Normal], hasResourcesFor (offer'^.asking) accepter']
+                   Accept offer' accepter' -> [phaseOneOf [Normal]
+                                              , hasResourcesFor (offer'^.asking) accepter'
+                                              , hasResourcesFor (offer'^.offering) (offer'^.offeredBy)]
                    Reject {} -> [phaseOneOf [Normal]]
                    CompleteTrade offer' accepterIndex' -> [ phaseOneOf [Normal]
                                                           , offerOriginatedWith offer' playerIndex'

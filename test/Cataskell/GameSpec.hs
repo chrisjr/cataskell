@@ -16,7 +16,7 @@ import Data.Ord (comparing)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Maybe (fromJust, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe
 import Data.Monoid (mempty, (<>))
 import Control.Applicative ((<$>), (<*>))
 import Control.Lens hiding (elements)
@@ -86,15 +86,15 @@ mkSteps = getRandomR (0, 200)
 mkGame :: (RandomGen g) => Rand g Game
 mkGame = mkSteps >>= mkGame' Nothing
 
-mkGame' :: (RandomGen g) => Maybe (GameAction -> Rational) -> Int -> Rand g Game
-mkGame' w steps = do
+mkGame' :: (RandomGen g) => Maybe (GameState g) -> Int -> Rand g Game
+mkGame' ra steps = do
   names <- uniform [["1", "2", "3"], ["1", "2", "3", "4"]]
   initialG <- newGame names
-  let r = maybe randomAct randomActWeighted w
+  let r = fromMaybe randomAct ra
   foldM (\acc _ -> execStateT r acc) initialG [0..steps]
 
 mkGames :: (RandomGen g) => Rand g [Game]
-mkGames = replicateM 250 mkGame
+mkGames = replicateM 100 mkGame
 
 randomGames :: [Game]
 randomGames = evalRand mkGames (mkStdGen 1)
@@ -145,23 +145,10 @@ instance Arbitrary InitialGame where
     names <- elements [["1", "2", "3"], ["1", "2", "3", "4"]]
     return $ toInitialGame $ evalRand (newGame names) stdGen
 
-weights :: GameAction -> Rational
-weights (PlayerAction _ act')
-  = case act' of
-      BuildForFree _ -> 1.0
-      SpecialAction _ -> 1.0
-      EndTurn -> 1.0
-      PlayCard _ -> 1.0
-      Purchase (Building (Edifice (OnPoint{}))) -> 2.0
-      Purchase _ -> 0.5 -- any other purchase less likely
-      Trade (Exchange _) -> 1.0
-      Trade _ -> 0.0
-      _ -> 1.0
-
 lateGame :: StdGen -> Gen Game
 lateGame stdGen = sized $ \n ->
-  do k <- choose (100, 100+n)
-     return $ evalRand (mkGame' (Just weights) k) stdGen
+  do k <- choose (0, n) -- around 2500?
+     return $ evalRand (mkGame' (Just randomActGoodInitial) k) stdGen
 
 newtype LateGame = LateGame Game
 
@@ -209,13 +196,13 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   gameInvariantSpec
   gameStateReturningSpec
   sampleGameSpec
 
 gameInvariantSpec :: Spec
-gameInvariantSpec = do
+gameInvariantSpec = parallel $ do
   describe "A new game" $ do
     it "should start in the Initial phase" $ property $
       \g -> view phase (fromInitialGame (g :: InitialGame)) == Initial
@@ -293,7 +280,16 @@ gameStateReturningSpec =
     let allValid f (Blind ng) = let g = fromNormalGame ng
                                     r' = mkStdGen 0
                                 in toJS g $ and $ evalGame (f >>= \x -> mapM isValid (Set.toList x)) g r'
-    context "simpleOffers" $
+    context "simpleOffers" $ do
+      it "should produce only offers that the offerer can fulfill" $ property $
+        \(Blind tg) -> let g = fromTradeGame tg
+                           openTrades' = view openTrades g
+                           offer' = firstMaybe $ mapSetMaybe toOffer openTrades'
+                       in isJust offer' ==>
+                         let offer'' = fromJust offer'
+                             pI = offer''^.offeredBy
+                             pRes = view (players . ix pI . resources) g
+                         in sufficient pRes (offer''^.offering)
       it "should not generate invalid actions" $ property $
         allValid simpleOffers
     context "simpleExchanges" $
@@ -332,8 +328,13 @@ gameStateReturningSpec =
                          in toJS g $ otherPlayers' == mapSetMaybe (^?action.trade.rejecter) rejects''
     context "possibleCompletes" $
       it "should always generate a complete when accepts are present" $ property $
-        \(Blind tg) -> let g = fromTradeGame tg in checkIfOpenTrade isAccept (g :: Game) ==>
-          toJS g $ checkForPossibleTrade isComplete g
+        \(Blind tg) -> let g = fromTradeGame tg
+                           (_, hasRepliedAlready) = getHasReplied g
+                           accept' = firstMaybe $ Set.filter (\a -> case a of (PlayerAction _ (Trade x)) -> isAccept x; _ -> False) (g^.validActions)
+                       in checkIfValidOffer g && Set.null hasRepliedAlready && isJust accept' ==> 
+                         let accept'' = fromJust accept'
+                             g' = execGame (update accept'') g dummyRand
+                         in toJS g' $ not (Set.null $ Set.filter (\a -> case a of (PlayerAction _ (Trade x)) -> isComplete x; _ -> False) (g'^.validActions))
     let game = head $ filter ((== Normal) . (^.phase)) randomGames
     context "possibleTradeActions" $ do
       let rand = mkStdGen 0
@@ -418,7 +419,7 @@ gameStateReturningSpec =
                          in not (null spots) && all (\hc -> all (flip elem vulnerable . color) $ evalGame (neighborBuildings hc) g r) spots
 
 sampleGameSpec :: Spec
-sampleGameSpec = do
+sampleGameSpec = parallel $ do
   describe "An example game" $ do
     let (initialGame, r') = runRand (newGame ["1", "2", "3", "4"]) (mkStdGen 0)
     let gs = iterate (uncurry (runGame randomAct)) (initialGame, r')

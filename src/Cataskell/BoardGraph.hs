@@ -124,5 +124,31 @@ roadGraph s enemyPs
                                        s2' = getNodeMaybe s2 gr
     in foldl insEdge' g uEdges
 
+
+-- | Find all possible paths from this given node, avoiding loops,
+--   cycles, etc.
+-- yanked from https://hackage.haskell.org/package/Graphalyze-0.14.1.0/docs/src/Data-Graph-Analysis-Algorithms-Common.html#pathTree
+pathTree             :: (DynGraph g) => Decomp g a b -> [[Node]]
+pathTree (Nothing,_) = []
+pathTree (Just ct,g)
+    | isEmpty g = []
+    | null sucs = [[n]]
+    | otherwise = (:) [n] . map (n:) . concatMap (subPathTree g') $ sucs
+    where
+      n = node' ct
+      sucs = suc' ct
+      -- Avoid infinite loops by not letting it continue any further
+      ct' = makeLeaf ct
+      g' = ct' & g
+      subPathTree gr n' = pathTree $ match n' gr
+
+-- | Remove all outgoing edges
+-- also from Graphalyze
+makeLeaf           :: Context a b -> Context a b
+makeLeaf (p,n,a,_) = (p', n, a, [])
+    where
+      -- Ensure there isn't an edge (n,n)
+      p' = filter (\(_,n') -> n' /= n) p
+
 boardPrint :: BoardGraph -> IO ()
 boardPrint = prettyPrint

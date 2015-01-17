@@ -17,7 +17,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   let isPos pos x = position x == pos
   let isIntersection x = isPos Top x || isPos Bottom x
   

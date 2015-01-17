@@ -71,12 +71,13 @@ test-suite test
   type:               exitcode-stdio-1.0
   hs-source-dirs:     test
   main-is:            Spec.hs
-  ghc-options:        -fno-ignore-asserts
+  ghc-options:        -fno-ignore-asserts -threaded
   build-depends:      base
                     , cataskell
                     , aeson
                     , bytestring
                     , fgl
+                    , fgl-visualize
                     , containers
                     , hspec
                     , random

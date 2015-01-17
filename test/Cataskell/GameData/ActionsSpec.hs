@@ -69,7 +69,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   describe "A PlayerAction" $ do
     let player' = mkPlayer (0, Blue, "NoOne")
     let players' = [player']

@@ -16,6 +16,7 @@ import Cataskell.Util
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.List (find)
 import Data.Monoid (mempty)
 import Data.Maybe
 import Control.Lens hiding (elements)
@@ -24,6 +25,7 @@ import Control.Monad.Random
 import Control.Applicative ((<$>), (<*>))
 
 import Data.Graph.Inductive hiding (context)
+import Data.Graph.Inductive.Dot
 import Cataskell.GameData.LocationSpec()
 import Cataskell.GameData.BasicsSpec ()
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
@@ -108,7 +110,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   hexCenterSpec
   hexMapSpec
   buildingMapSpec
@@ -128,7 +130,7 @@ hexCenterSpec =
       \hc -> (_terrain (hc :: HexCenter) == Desert) == (_roll hc == 7)
 
 hexMapSpec :: Spec
-hexMapSpec = do
+hexMapSpec = parallel $ do
   describe "A HexMap" $ do
     it "should create a randomly generated set of terrains and rolls" $ property $
       \hexMap -> Map.size (hexMap :: HexMap) == 19
@@ -157,7 +159,7 @@ hexMapSpec = do
                  in _roll desertHex == 7
 
 buildingMapSpec :: Spec
-buildingMapSpec = do
+buildingMapSpec = parallel $ do
   describe "A BuildingMap" $ do
     it "should have 54 keys" $
       Map.size emptyBuildingMap `shouldBe` 54
@@ -197,7 +199,10 @@ interruptSettlement :: Point -> BuildingMap
 interruptSettlement p = Map.singleton p (Just $ OnPoint p Red Settlement)
 
 blueRoads :: RoadMap
-blueRoads = let ps = [Point (0, -3) Bottom, Point (0,-2) Top, Point (1,-3) Bottom, Point (1,-2) Top]
+blueRoads = let ps = [ Point (0, -3) Bottom
+                     , Point (0,-2) Top
+                     , Point (1,-3) Bottom
+                     , Point (1,-2) Top]
                 es = map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
             in mkRoadMap es Blue
 
@@ -225,16 +230,38 @@ blueRoads2 :: RoadMap
 blueRoads2 = Map.union (mkRoadMap [addedEdge] Blue) blueRoads
 
 longerEdges :: [UndirectedEdge]
-longerEdges = let ps = [ Point (0, -3) Bottom, Point (-1,-1) Top, Point (1,-2) Bottom 
-                       , Point (-2,0) Top, Point (-2, -1) Bottom, Point (-3,-1) Top
+longerEdges = let ps = [ Point (0, -3) Bottom
+                       , Point (-1,-1) Top
+                       , Point (1,-2) Bottom 
+                       , Point (-2,0) Top
+                       , Point (-2, -1) Bottom
+                       , Point (-3,-1) Top
                        , Point (-2,0) Bottom]
               in map dupleToEdge . mapMaybe listToDuple $ windowed 2 ps
 
 whiteRoads :: RoadMap
 whiteRoads = mkRoadMap longerEdges White
 
+orangeRoads :: RoadMap
+orangeRoads = let es = [ L.mkEdge (-2,2,Top) (-1,0,Bottom)
+                       , L.mkEdge (0,-2,Bottom) (0,-1,Top)
+                       , L.mkEdge (-2,1,Top) (-1,0,Bottom)
+                       , L.mkEdge (-1,-1,Top) (0,-2,Bottom)
+                       , L.mkEdge (0,-1,Top) (1,-3,Bottom)
+                       , L.mkEdge (-2,1,Top) (-1,-1,Bottom)
+                       , L.mkEdge (-1,0,Bottom) (-1,1,Top)
+                       , L.mkEdge (-1,1,Top) (0,-1,Bottom)
+                       , L.mkEdge (-1,0,Top) (0,-1,Bottom)
+                       , L.mkEdge (1,-3,Bottom) (1,-2,Top)
+                       , L.mkEdge (-1,-1,Bottom) (-1,0,Top)
+                       , L.mkEdge (-1,0,Top) (0,-2,Bottom)
+                       , L.mkEdge (-1,-1, Top) (0, -3, Bottom)
+                       , L.mkEdge (-2,0,Bottom) (-2,1,Top)
+                       , L.mkEdge (-2,2,Top) (-1, 1, Bottom)]
+             in mkRoadMap es Orange
+
 functionsSpec :: Spec
-functionsSpec = do
+functionsSpec = parallel $ do
   describe "build" $
     it "should return a changed board when building a valid item" $ property $
       \board construct -> validConstruct (construct :: Construct) (board :: Board) ==>
@@ -269,14 +296,25 @@ functionsSpec = do
       \board c -> let sp' = Map.keysSet . Map.filter (isSettlement . Building . Edifice) $ getHabitationsFor c board
                       vcp = mapSetMaybe (^?onPoint.point) $ validCitiesFor c board
                   in sp' === vcp
-  describe "roadGraphForColor" $ 
+  describe "roadGraphForColor" $ do
+    let b' = evalRand newBoard (mkStdGen 1)
     it "should return a graph of connected roads for a color" $ do
-      let b' = evalRand newBoard (mkStdGen 1)
       let roads' = Map.union blueRoads2 (_roads b')
       let board' = b' { _roads = roads' }
       let gr' = roadGraphForColor Blue board'
       labNodes gr' `shouldSatisfy` (== 4) . length
-      labEdges gr' `shouldSatisfy` (== 4) . length -- 2, undirected
+      labEdges gr' `shouldSatisfy` (== 4) . length -- 2 edges, both ways
+    it "should not have a link between roads separated by an enemy settlement" $ do
+      let interruption = Map.union (interruptSettlement (Point (-1,-1) Bottom)) emptyBuildingMap
+      let orangeLongest = b' { _roads = orangeRoads, _buildings = interruption }
+      let gr' = roadGraphForColor Orange orangeLongest
+      let e1 = L.mkEdge (-1,-1,Bottom) (-2,1,Top)
+      let e2 = L.mkEdge (-1,0,Top) (-1,-1,Bottom)
+      -- putStrLn . showDot $ fglToDot gr' 
+      labNodes gr' `shouldSatisfy` (== 15) . length
+      labEdges gr' `shouldSatisfy` (== 36) . length
+      let wrongEdge = find (\(_,_,(s1,s2)) -> let ss = [s1,s2] in e1 `elem` ss && e2 `elem` ss) (labEdges gr')
+      wrongEdge `shouldSatisfy` isNothing
   describe "longestRoad" $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
@@ -289,6 +327,10 @@ functionsSpec = do
       let redLongest = Map.unions [redRoads, blueRoads, roads']
       let redLongestBoard = board' { _roads = redLongest }
       longestRoad redLongestBoard `shouldBe` (Red, 6)
+    it "should count only the longest path" $ do
+      let interruption = Map.union (interruptSettlement (Point (-1,-1) Bottom)) emptyBuildingMap
+      let orangeLongest = board' { _roads = orangeRoads, _buildings = interruption }
+      longestRoad orangeLongest `shouldBe` (Orange, 9)
     it "should not count roads interrupted by enemy settlements" $ do
       let whiteLongestRoads = Map.union whiteRoads roads'
       let whiteLongest = board' { _roads = whiteLongestRoads }
