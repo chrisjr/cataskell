@@ -56,6 +56,7 @@ library
                      Cataskell.GameData.Basics
                      Cataskell.GameData.Location
                      Cataskell.GameData.Player
+                     Cataskell.GameData.PlayerView
                      Cataskell.GameData.Preconditions
                      Cataskell.GameData.Resources
                      Cataskell.Serialize

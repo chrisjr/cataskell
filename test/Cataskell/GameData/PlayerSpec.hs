@@ -13,7 +13,6 @@ import Data.Maybe (isNothing)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Control.Lens hiding (elements)
-import Control.Exception (assert)
 
 import Cataskell.GameData.BasicsSpec() -- get Arbitrary ResourceCount 
 import Cataskell.GameData.ResourcesSpec() -- get Arbitrary ResourceCount 

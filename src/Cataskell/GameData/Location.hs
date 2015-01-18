@@ -65,7 +65,7 @@ data VertexPosition
   = Top     -- ^ Top of a hex
   | Bottom  -- ^ Bottom of a hex
   | Center  -- ^ Center (location of chits/robber)
-  deriving (Eq, Ord, Show, Read,Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 -- | Describes a board location
 data Point = Point

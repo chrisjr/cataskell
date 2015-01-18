@@ -11,6 +11,7 @@ import Cataskell.GameData.Basics
 import Cataskell.GameData.Board
 import Cataskell.GameData.Location
 import Cataskell.GameData.Player
+import Cataskell.GameData.PlayerView
 import Cataskell.GameData.Resources
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
@@ -99,3 +100,5 @@ deriveJSON myOptions ''SpecialPhase
 deriveJSON myOptions ''Phase
 
 deriveJSON myOptions ''Game
+
+deriveJSON myOptions { fieldLabelModifier = drop 3 } ''PlayerView

@@ -30,11 +30,14 @@ instance Arbitrary Monopoly where
 instance Arbitrary Invention where
   arbitrary = elements . map InventionOf $ Set.toList possibleInventions
 
+instance Arbitrary MoveRobber where
+  arbitrary = MoveRobber <$> arbitrary
+
 instance Arbitrary SpecialAction where
   arbitrary = do
     let m = M <$> arbitrary
     let i = I <$> arbitrary
-    let mr = MR <$> MoveRobber <$> arbitrary
+    let mr = MR <$> arbitrary
     let r = R <$> arbitrary
     oneof [m, i, mr, r]
 

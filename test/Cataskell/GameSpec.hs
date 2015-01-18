@@ -103,6 +103,14 @@ instance (Arbitrary a, Ord a) => Arbitrary (Set a) where
   arbitrary = Set.fromList <$> arbitrary
   shrink s = Set.fromList <$> shrink (Set.toList s)
 
+instance Arbitrary SpecialPhase where
+  arbitrary = elements [ RobberAttack, MovingRobber, Robbing
+                       , FreeRoads 2, FreeRoads 1
+                       , Inventing, Monopolizing ]
+
+instance Arbitrary Phase where
+  arbitrary = oneof [elements [Initial, Normal, End], Special <$> arbitrary]
+
 instance Arbitrary Game where
   arbitrary = elements randomGames
   shrink g = tail $ Game <$> [_phase g]

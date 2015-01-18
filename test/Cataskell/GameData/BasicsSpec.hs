@@ -3,6 +3,7 @@ module Cataskell.GameData.BasicsSpec (main, spec) where
 import Test.Hspec
 import Test.QuickCheck
 import Data.Maybe (isJust)
+import Control.Applicative ((<$>))
 import Control.Lens hiding (elements)
 import Control.Exception (assert)
 import Cataskell.GameData.Basics
@@ -11,8 +12,11 @@ import Cataskell.GameData.Location
 import Cataskell.GameData.LocationSpec()
 import Cataskell.BoardGraphSpec()
 
+instance Arbitrary ItemType where
+  arbitrary = elements [H Settlement, H City, DevelopmentCard, Road]
+
 instance Arbitrary Item where
-  arbitrary = assert False undefined
+  arbitrary = oneof [Building <$> arbitrary, Potential <$> arbitrary, Card <$> arbitrary]
 
 instance Arbitrary Color where
   arbitrary = elements [Red, White, Orange, Blue]
@@ -29,6 +33,9 @@ instance Arbitrary Construct where
 
 instance Arbitrary DevelopmentCard where
   arbitrary = elements [Knight, RoadBuilding, Invention, Monopoly, VictoryPoint]
+
+instance Arbitrary Bonus where
+  arbitrary = elements [LargestArmy, LongestRoad]
 
 main :: IO ()
 main = hspec spec
