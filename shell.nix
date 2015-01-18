@@ -8,9 +8,15 @@ with haskellPackages; cabal.mkDerivation (self: {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
-  buildDepends = [ fgl fglVisualize aeson MonadRandom randomShuffle lens ];
-  testDepends = [ hspec QuickCheck deepseq ];
-  buildTools = [ cabalInstall hsdev ];
+  buildDepends = [
+    aeson engineIo engineIoYesod fgl httpTypes lens MonadRandom mtl
+    random randomShuffle socketIo wai warp yesodCore yesodStatic
+  ];
+  testDepends = [
+    aeson deepseq fgl fglVisualize hspec hspecWai hspecWaiJson lens
+    MonadRandom mtl QuickCheck random randomShuffle
+  ];
+  buildTools = [ cabalInstall_1_20_0_6 yesodBin ];
   shellHook =
     ''
       e() { ~/.nix-profile/Applications/Emacs.app/Contents/MacOS/Emacs $@ & }

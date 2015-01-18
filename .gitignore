@@ -1,4 +1,5 @@
 games.js
+client_session_key.aes
 
 # trivial gitignore file
 .cabal-sandbox/
