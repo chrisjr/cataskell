@@ -62,6 +62,7 @@ library
                      Cataskell.SerializeOpts
                      Cataskell.Server.App
                      Cataskell.Server.Main
+                     Cataskell.Server.MessageTypes
                      Cataskell.Util
   other-modules:     Paths_cataskell
   if flag(coverage)
@@ -124,6 +125,7 @@ test-suite test-server
   ghc-options:        -threaded
   build-depends:      base
                     , cataskell
+                    , aeson
                     , wai
                     , hspec
                     , hspec-wai
