@@ -10,7 +10,7 @@ with haskellPackages; cabal.mkDerivation (self: {
   isExecutable = true;
   buildDepends = [
     aeson engineIo engineIoYesod fgl httpTypes lens MonadRandom mtl
-    random randomShuffle socketIo wai warp yesodCore yesodStatic
+    random randomShuffle socketIo wai warp yesodCore
   ];
   testDepends = [
     aeson deepseq fgl fglVisualize hspec hspecWai hspecWaiJson lens
