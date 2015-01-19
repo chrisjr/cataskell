@@ -3,7 +3,7 @@
 module Cataskell.Server.Main where
 
 import Control.Applicative
-import Cataskell.Server.App (server, ServerState (..))
+import Cataskell.Server.App (server, ServerState (..), startingState)
 import Network.Wai (Application)
 import qualified Yesod.Core as YC
 import qualified Control.Concurrent.STM as STM
@@ -46,7 +46,7 @@ handleSocketIOR = YC.getYesod >>= socketIoHandler
 
 site :: IO YesodChat
 site = do
-  state <- ServerState <$> STM.newTVarIO 0
+  state <- startingState
   YesodChat <$> SocketIO.initialize EIOYesod.yesodAPI (server state)
 
 app :: IO Application
@@ -57,4 +57,4 @@ app = do
 serverMain :: IO ()
 serverMain = do
   site' <- site
-  YC.warp 8000 site'
+  YC.warp 8080 site'

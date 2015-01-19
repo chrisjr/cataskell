@@ -1,52 +1,154 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
-module Cataskell.Server.App (server, ServerState (..)) where
+module Cataskell.Server.App (server, ServerState (..), startingState) where
 
 import Prelude hiding (mapM_)
 
-import Control.Monad.IO.Class (liftIO)
-import Data.Foldable (mapM_)
-
+import Control.Lens
+import Control.Monad (when)
+import Control.Monad.Reader (ask)
+import Control.Monad.State.Class (MonadState)
+import Control.Monad.IO.Class (liftIO, MonadIO)
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Maybe (mapMaybe)
+import Data.Foldable (mapM_, forM_)
 import Control.Applicative
+import Cataskell.Game (Game, newGame, runGame, update, players)
+import Cataskell.GameData.Actions (PlayerAction, GameAction(..))
+import Cataskell.GameData.Player (PlayerIndex, playerName)
+import Cataskell.GameData.PlayerView (PlayerView, viewFor)
 import Cataskell.Server.MessageTypes
+import Cataskell.Serialize()
+import System.Random
+import Control.Monad.Random
 import qualified Control.Concurrent.STM as STM
-import qualified Data.Aeson as Aeson
-import qualified Data.Text as Text
+import qualified Data.Aeson as Aeson()
 import qualified Network.SocketIO as SocketIO
 
 --------------------------------------------------------------------------------
-data ServerState = ServerState { ssNConnected :: STM.TVar Int }
+data ServerState = ServerState
+  { ssUserNamesToSockets :: STM.TVar (Map String SocketIO.Socket)
+  , ssNVotedToStart :: STM.TVar Int
+  , ssGameStdGen :: STM.TMVar (Game, StdGen)
+  , ssPlayerIndexes :: STM.TVar (Map PlayerIndex (Maybe SocketIO.Socket))
+  , ssLastStates :: STM.TVar (Map SocketIO.Socket PlayerView) }
 
---server :: ServerState -> StateT SocketIO.RoutingTable Snap.Snap ()
+startingState :: IO ServerState
+startingState = do
+  userNamesToSocketId <- STM.newTVarIO Map.empty
+  nVotedToStart <- STM.newTVarIO 0
+  gameStdGen <- STM.newEmptyTMVarIO
+  playerIndexes <- STM.newTVarIO Map.empty
+  lastStates <- STM.newTVarIO Map.empty
+  return $ ServerState userNamesToSocketId nVotedToStart gameStdGen playerIndexes lastStates
+
+fillPlayers :: ServerState -> STM.STM ()
+fillPlayers state = do
+  mGameStdGen <- STM.tryReadTMVar (ssGameStdGen state)
+  sockets <- STM.readTVar (ssUserNamesToSockets state)
+  case mGameStdGen of
+    Just (g, _)-> do
+      let pItoNames = Map.map (^.playerName) (g^.players)
+      when (Map.size pItoNames == Map.size sockets) $ do
+        let pItoSocket = Map.map (`Map.lookup` sockets) pItoNames
+        STM.writeTVar (ssPlayerIndexes state) pItoSocket
+    Nothing -> return ()
+
+flipMaybeMap :: (Ord a) => Map k (Maybe a) -> Map a k
+flipMaybeMap = Map.fromList . mapMaybe (\(x,my) -> fmap (\y -> (y, x)) my) . Map.toList
+
+getGameStates :: (MonadIO m) => ServerState -> m (Map SocketIO.Socket PlayerView)
+getGameStates state = liftIO $ STM.atomically $ do
+  mGameStdGen <- STM.tryReadTMVar (ssGameStdGen state)
+  case mGameStdGen of
+    Just (g, _) -> do
+      playersToSockets <- STM.readTVar (ssPlayerIndexes state)
+      let socketsToPlayers = flipMaybeMap playersToSockets
+      let socketsToStates = Map.map (`viewFor` g) socketsToPlayers
+      return socketsToStates
+    Nothing -> return Map.empty
+
+-- | new map -> old map -> map of changed elements
+onlyNew :: (Eq a, Ord k) => Map k a -> Map k a -> Map k a
+onlyNew = Map.differenceWith f
+  where f new old = if new /= old then Just new else Nothing
+
+updateAndGetUpdatedStates :: (MonadIO m) => ServerState -> m [(SocketIO.Socket, PlayerView)]
+updateAndGetUpdatedStates state = do
+  statesToSendMap <- getGameStates state
+  liftIO $ STM.atomically $ do
+    lastStates <- STM.readTVar (ssLastStates state)
+    STM.writeTVar (ssLastStates state) statesToSendMap -- update
+    let statesToSendMap' = onlyNew statesToSendMap lastStates
+    return $ Map.toList statesToSendMap'
+
+sendGameStateToPlayers :: (MonadIO m) => ServerState -> m ()
+sendGameStateToPlayers state = do
+  statesToSend <- updateAndGetUpdatedStates state
+  forM_ statesToSend $ \(sock, gState) -> SocketIO.emitTo sock "game state" gState
+
+forMAtomic_ :: (MonadIO m) => STM.TMVar a -> (a -> m b) -> m ()
+forMAtomic_ mvar m
+  = liftIO (STM.atomically (STM.tryReadTMVar mvar)) >>= mapM_ m 
+
+server :: (MonadState SocketIO.RoutingTable m, MonadIO m, Applicative m) => ServerState -> m ()
 server state = do
   userNameMVar <- liftIO STM.newEmptyTMVarIO
-  let forUserName m = liftIO (STM.atomically (STM.tryReadTMVar userNameMVar)) >>= mapM_ m
+  let forUserName = forMAtomic_ userNameMVar
+  -- playerIndexMVar <- liftIO STM.newEmptyTMVarIO
+  -- let forPlayerIndex = forMatomic playerIndexMVar
 
   SocketIO.on "new message" $ \(NewMessage message) ->
     forUserName $ \userName ->
       SocketIO.broadcast "new message" (Said userName message)
 
   SocketIO.on "add user" $ \(AddUser userName) -> do
-    n <- liftIO $ STM.atomically $ do
-      n <- (+ 1) <$> STM.readTVar (ssNConnected state)
+    mySocket <- ask
+    mUserNamesToSocketId <- liftIO $ STM.atomically $ do
+      let toSockets = ssUserNamesToSockets state
       STM.putTMVar userNameMVar userName
-      STM.writeTVar (ssNConnected state) n
-      return n
-
-    SocketIO.emit "login" (NumConnected n)
-    SocketIO.broadcast "user joined" (UserJoined userName n)
+      userNamesToSockets <- STM.readTVar toSockets
+      case Map.lookup userName userNamesToSockets of
+        Nothing -> do
+          let result = Map.insert userName mySocket userNamesToSockets
+          STM.writeTVar toSockets result
+          return $ Just result
+        Just x -> if x == mySocket
+                     then return $ Just userNamesToSockets
+                     else return Nothing
+    case mUserNamesToSocketId of
+      Nothing -> SocketIO.emit "error" (UserAlreadyExists userName)
+      Just userNamesMap -> do
+        let n = Map.size userNamesMap
+        SocketIO.emit "login" (NumConnected n)
+        SocketIO.broadcast "user joined" (UserJoined userName n)
 
   SocketIO.appendDisconnectHandler $ do
-    (n, mUserName) <- liftIO $ STM.atomically $ do
-      n <- (+ (-1)) <$> STM.readTVar (ssNConnected state)
+    mySocket <- ask
+    (userNamesToSockets, mUserName) <- liftIO $ STM.atomically $ do
       mUserName <- STM.tryReadTMVar userNameMVar
-      STM.writeTVar (ssNConnected state) n
-      return (n, mUserName)
+      let toSockets = ssUserNamesToSockets state
+      userNamesToSockets <- STM.readTVar toSockets
+      case mUserName of
+        Nothing -> return (userNamesToSockets, mUserName)
+        Just userName -> do
+          let sock = Map.lookup userName userNamesToSockets
+          case sock of
+            Just s | s == mySocket -> do 
+              let updated = Map.delete userName userNamesToSockets
+              STM.writeTVar toSockets updated
+              return (updated, mUserName)
+            _ -> return (userNamesToSockets, Nothing)
 
     case mUserName of
       Nothing -> return ()
       Just userName ->
-        SocketIO.broadcast "user left" (UserJoined userName n)
+        SocketIO.broadcast "user left" (UserJoined userName (Map.size userNamesToSockets))
 
   SocketIO.on "typing" $
     forUserName $ \userName ->
@@ -55,3 +157,39 @@ server state = do
   SocketIO.on "stop typing" $
     forUserName $ \userName ->
       SocketIO.broadcast "stop typing" (UserName userName)
+  
+  SocketIO.on "start game" $ do
+    let toSockets = ssUserNamesToSockets state
+    (userNamesToSockets, nStarted) <- liftIO $ STM.atomically $ do
+      nStarted <- (+ 1) <$> STM.readTVar (ssNVotedToStart state)
+      userNamesToSockets <- STM.readTVar toSockets
+      STM.writeTVar (ssNVotedToStart state) nStarted
+      return (userNamesToSockets, nStarted)
+    forUserName $ \userName ->
+      SocketIO.broadcast "vote to start" (UserName userName) 
+    when (nStarted >= 3 && nStarted == Map.size userNamesToSockets) $ do
+      stdGen <- liftIO getStdGen
+      liftIO $ STM.atomically $ do
+        userNamesToSockets' <- STM.readTVar toSockets
+        let names = Map.keys userNamesToSockets'
+        let (game, stdGen') = runRand (newGame names) stdGen
+        STM.putTMVar (ssGameStdGen state) (game, stdGen')
+        fillPlayers state
+      sendGameStateToPlayers state
+  SocketIO.on "action" $ \(x :: PlayerAction) -> do
+    mySocket <- ask
+    liftIO $ STM.atomically $ do
+      playersToSockets <- STM.readTVar (ssPlayerIndexes state)
+      let socketsToPlayers = flipMaybeMap playersToSockets
+      let pImaybe = Map.lookup mySocket socketsToPlayers
+      case pImaybe of
+        Just pI -> do
+          let act = PlayerAction pI x
+          mGameStdGen <- STM.tryReadTMVar (ssGameStdGen state)
+          case mGameStdGen of
+            Just (g, stdGen) -> do
+              let (g', stdGen') = runGame (update act) g stdGen
+              STM.putTMVar (ssGameStdGen state) (g', stdGen')
+            Nothing -> return ()
+        Nothing -> return ()
+    sendGameStateToPlayers state

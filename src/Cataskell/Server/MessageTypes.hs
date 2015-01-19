@@ -4,12 +4,16 @@ module Cataskell.Server.MessageTypes where
 
 import Data.Aeson.TH
 import Cataskell.SerializeOpts
-import qualified Data.Text as Text
 
-data AddUser = AddUser Text.Text
+data AddUser = AddUser String
   deriving (Eq, Show)
 
 deriveFromJSON myOptionsNoLens ''AddUser
+
+data UserAlreadyExists = UserAlreadyExists String
+  deriving (Eq, Show)
+
+deriveToJSON myOptionsNoLens ''UserAlreadyExists
 
 data NumConnected = NumConnected 
   { _numUsers :: !Int }
@@ -17,25 +21,25 @@ data NumConnected = NumConnected
 
 deriveToJSON myOptions { fieldLabelModifier = drop 1 } ''NumConnected
 
-data NewMessage = NewMessage Text.Text
+data NewMessage = NewMessage String
   deriving (Eq, Show)
 
 deriveFromJSON myOptionsNoLens ''NewMessage
 
 data Said = Said 
-  { _username :: Text.Text
-  , _message :: Text.Text }
+  { _username :: String
+  , _message :: String }
   deriving (Eq, Show)
 
 deriveJSON myOptions ''Said
 
-data UserName = UserName Text.Text
+data UserName = UserName String
   deriving (Eq, Show)
 
 deriveJSON myOptionsNoLens ''UserName
 
 data UserJoined = UserJoined
-  { username :: Text.Text
+  { username :: String
   , numUsers :: Int }
   deriving (Eq, Show)
 

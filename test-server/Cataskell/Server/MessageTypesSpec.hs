@@ -31,4 +31,3 @@ spec = parallel $
         let obj = UserJoined "Joiner" 3
         let obj' = decode "{\"username\": \"Joiner\", \"numUsers\": 3}" :: Maybe UserJoined
         obj' `shouldBe` Just obj
-
