@@ -44,7 +44,6 @@ library
                    , wai
                    , warp
                    , yesod-core
-                   , yesod-static
                    , engine-io
                    , engine-io-yesod
                    , socket-io
