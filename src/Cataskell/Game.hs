@@ -810,7 +810,7 @@ toSpecialPhase special'= do
           let color'' = fromJust color'
           possibleRoads <- uses board (validRoadsFor color'')
           validActions .= Set.map (mkFree playerIndex') possibleRoads
-      RobberAttack -> do -- ^ If no one has more than 7 resources, move on to MovingRobber.
+      RobberAttack -> do -- If no one has more than 7 resources, move on to MovingRobber.
         mustDiscard <- makeDiscards
         if not $ Set.null mustDiscard
         then validActions .= mustDiscard
