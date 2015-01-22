@@ -8,8 +8,9 @@ with haskellPackages; cabal.mkDerivation (self: {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
+  engineIoYesod = callPackage ./engine-io-yesod.nix {};
   buildDepends = [
-    aeson engineIo engineIoYesod fgl httpTypes lens MonadRandom mtl
+    aeson engineIo self.engineIoYesod fgl httpTypes lens MonadRandom mtl
     random randomShuffle socketIo wai warp yesodCore
   ];
   testDepends = [
