@@ -129,5 +129,4 @@ test-suite test-server
                     , wai
                     , hspec
                     , hspec-wai
-                    , hspec-wai-json
   default-language:   Haskell2010

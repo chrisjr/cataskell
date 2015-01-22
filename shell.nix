@@ -14,8 +14,8 @@ with haskellPackages; cabal.mkDerivation (self: {
     random randomShuffle socketIo wai warp yesodCore
   ];
   testDepends = [
-    aeson deepseq fgl fglVisualize hspec hspecWai hspecWaiJson lens
-    MonadRandom mtl QuickCheck random randomShuffle
+    aeson deepseq fgl fglVisualize hspec hspecWai lens MonadRandom mtl
+    QuickCheck random randomShuffle wai
   ];
   buildTools = [ cabalInstall_1_20_0_6 yesodBin ];
   shellHook =
