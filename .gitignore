@@ -1,3 +1,8 @@
+heroku-buildpack.sh
+.vagrant
+secrets.sh
+build
+result
 games.js
 client_session_key.aes
 
