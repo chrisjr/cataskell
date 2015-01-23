@@ -9,6 +9,8 @@ import qualified Yesod.Core as YC
 import qualified Control.Concurrent.STM as STM
 import qualified Network.SocketIO as SocketIO
 import qualified Network.EngineIO.Yesod as EIOYesod
+import Data.Maybe (maybe)
+import System.Environment (lookupEnv)
 
 import Paths_cataskell (getDataDir)
 
@@ -57,4 +59,5 @@ app = do
 serverMain :: IO ()
 serverMain = do
   site' <- site
-  YC.warp 8080 site'
+  portNo <- lookupEnv "PORT"
+  YC.warp (maybe 8080 read portNo) site'
