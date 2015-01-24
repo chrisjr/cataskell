@@ -8,9 +8,10 @@ with haskellPackages; cabal.mkDerivation (self: {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
+  socketIo = callPackage ./socket-io.nix {};
   buildDepends = [
     aeson engineIo engineIoSnap fgl httpTypes lens MonadRandom mtl
-    random randomShuffle snapCore snapServer socketIo stm text
+    random randomShuffle snapCore snapServer self.socketIo stm text
     transformers wai
   ];
   buildTools = [ cabalInstall_1_20_0_6 ];
