@@ -3,61 +3,47 @@
 module Cataskell.Server.Main where
 
 import Control.Applicative
+import Control.Lens
 import Cataskell.Server.App (server, ServerState (..), startingState)
-import Network.Wai (Application)
-import qualified Yesod.Core as YC
+import qualified Snap.Core as Snap
+import qualified Snap.Snaplet as Snap
+import qualified Snap.Util.FileServe as Snap
+import qualified Snap.Http.Server as Snap
 import qualified Control.Concurrent.STM as STM
 import qualified Network.SocketIO as SocketIO
-import qualified Network.EngineIO.Yesod as EIOYesod
+import qualified Network.EngineIO.Snap as EIOSnap
 import Data.Maybe (maybe)
+import Data.Monoid (mempty)
 import System.Environment (lookupEnv)
 
 import Paths_cataskell (getDataDir)
 
-data YesodChat = YesodChat { socketIoHandler :: YC.HandlerT YesodChat IO () }
+data App = App
+  { _serverState :: ServerState
+  }
 
-YC.mkYesod "YesodChat" [YC.parseRoutesNoCheck|
-/ IndexR GET
-/main.js MainJSR GET
-/style.css StyleCSSR GET
-/socket.io/ SocketIOR
-|]
+makeLenses ''App
 
-instance YC.Yesod YesodChat where
-  -- do not redirect /socket.io/?bla=blub to /socket.io?bla=blub
-  cleanPath _ ["socket.io",""] = Right ["socket.io"]
-  cleanPath _ p = Right p
-
-getIndexR :: Handler ()
-getIndexR = do
-  dataDir <- YC.liftIO getDataDir
-  YC.sendFile "text/html" $ dataDir ++ "/index.html"
-
-getStyleCSSR :: Handler ()
-getStyleCSSR = do
-  dataDir <- YC.liftIO getDataDir
-  YC.sendFile "text/css" $ dataDir ++ "/style.css"
-
-getMainJSR :: Handler ()
-getMainJSR = do
-  dataDir <- YC.liftIO getDataDir
-  YC.sendFile "application/javascript" $ dataDir ++ "/main.js"
-
-handleSocketIOR :: Handler ()
-handleSocketIOR = YC.getYesod >>= socketIoHandler
-
-site :: IO YesodChat
-site = do
+routes = do
   state <- startingState
-  YesodChat <$> SocketIO.initialize EIOYesod.yesodAPI (server state)
+  socketIoHandler <- SocketIO.initialize EIOSnap.snapAPI (server state)
+  dataDir <- getDataDir
+  return [ ("/socket.io", socketIoHandler)
+         , ("/", Snap.serveDirectory dataDir)
+         ]
 
-app :: IO Application
-app = do
-  site' <- site
-  YC.toWaiApp site'
+app :: IO (Snap.SnapletInit App App)
+app = Snap.makeSnaplet "app" "Cataskell websocket server" (Just getDataDir) $ do
+  s <- startingState
+  Snap.addRoutes routes
+  return $ App s
+
+config = do
+  portNo <- lookupEnv "PORT"
+  return $ Snap.setPort (maybe 8080 read portNo) mempty
 
 serverMain :: IO ()
 serverMain = do
-  site' <- site
-  portNo <- lookupEnv "PORT"
-  YC.warp (maybe 8080 read portNo) site'
+  config' <- Snap.commandLineConfig config
+  Snap.serveSnaplet config app
+

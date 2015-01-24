@@ -41,11 +41,11 @@ library
                    , stm
                    , text
                    , lens
-                   , wai
-                   , warp
-                   , yesod-core
+                   , snap
+                   , snap-core
+                   , snap-server
                    , engine-io
-                   , engine-io-yesod
+                   , engine-io-snap
                    , socket-io
                    , http-types
   exposed-modules:   Cataskell.BoardGraph
@@ -93,7 +93,8 @@ executable cataskell-server
   ghc-options:       -threaded
   build-depends:     base
                    , cataskell
-                   , wai
+                   , snap
+                   , snap-server
   default-language:  Haskell2010
 
 test-suite test
@@ -126,7 +127,6 @@ test-suite test-server
   build-depends:      base
                     , cataskell
                     , aeson
-                    , wai
                     , hspec
-                    , hspec-wai
+                    , hspec-snap
   default-language:   Haskell2010

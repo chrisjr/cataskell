@@ -8,19 +8,20 @@ with haskellPackages; cabal.mkDerivation (self: {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
-  engineIoYesod = callPackage ./engine-io-yesod.nix {};
   buildDepends = [
-    aeson engineIo self.engineIoYesod fgl httpTypes lens MonadRandom mtl
-    random randomShuffle socketIo wai warp yesodCore
+    aeson engineIo engineIoSnap fgl httpTypes lens MonadRandom mtl
+    random randomShuffle snapCore snapServer socketIo stm text
+    transformers wai
   ];
+  buildTools = [ cabalInstall_1_20_0_6 ];
+  hspecSnap = callPackage ./hspec-snap.nix {};
   testDepends = [
-    aeson deepseq fgl fglVisualize hspec hspecWai lens MonadRandom mtl
+    aeson deepseq fgl fglVisualize hspec self.hspecSnap lens MonadRandom mtl
     QuickCheck random randomShuffle wai
   ];
-  buildTools = [ cabalInstall_1_20_0_6 yesodBin ];
   shellHook =
     ''
-      e() { ~/.nix-profile/Applications/Emacs.app/Contents/MacOS/Emacs $@ & }
+      e() { ~/.nix-profile/Applications/Emacs.app/Contents/MacOS/emacs $@ & }
     '';
   meta = {
     homepage = "http://github.com/chrisjr/cataskell";
