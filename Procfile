@@ -1,1 +1,1 @@
-web: ./dist/build/cataskell-server/cataskell-server
+web: run_proot.sh cataskell-server
