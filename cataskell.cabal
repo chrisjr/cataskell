@@ -91,7 +91,9 @@ executable cataskell-example
 executable cataskell-server
   main-is:           Main.hs
   hs-source-dirs:    cataskell-server
-  ghc-options:       -threaded
+  ghc-options:       -O2 -threaded
+  if !os(darwin)
+    ld-options:        -static -pthread
   build-depends:     base
                    , cataskell
                    , snap
