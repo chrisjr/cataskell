@@ -68,7 +68,7 @@ library
   other-modules:     Paths_cataskell
   if flag(coverage)
     ghc-options: -fhpc
-  ghc-options:       -fwarn-incomplete-patterns -fno-ignore-asserts -Werror
+  ghc-options:       -fwarn-incomplete-patterns -fno-ignore-asserts -Werror -O2
   default-language:  Haskell2010
 
 executable cataskell-example
@@ -92,8 +92,6 @@ executable cataskell-server
   main-is:           Main.hs
   hs-source-dirs:    cataskell-server
   ghc-options:       -O2 -threaded
-  if !os(darwin)
-    ld-options:        -static -pthread
   build-depends:     base
                    , cataskell
                    , snap
