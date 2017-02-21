@@ -20,7 +20,6 @@ spec :: Spec
 spec = parallel $ do
   let isPos pos x = position x == pos
   let isIntersection x = isPos Top x || isPos Bottom x
-  
   describe "A hex graph" $ do
     let hex = addHex empty . toCenter $ mkCenter (0,0)
     it "has 7 vertices total" $ do

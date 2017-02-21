@@ -3,7 +3,7 @@
 module Cataskell.BoardGraph where
 
 import Data.Graph.Inductive
-import Data.Graph.Inductive.PatriciaTree()
+import Data.Graph.Inductive.PatriciaTree
 import Data.Maybe (listToMaybe, fromJust)
 import Control.Applicative ((<$>))
 import Control.Monad
@@ -32,7 +32,7 @@ getContextByLabel :: (Eq a) => a -> Gr a b -> Maybe (Context a b)
 getContextByLabel point gr = listToMaybe $ gsel (\x -> lab' x == point) gr
 
 -- | Get a node based on its point definition.
-getNodeMaybe :: (Eq a) => a -> Gr a b -> Maybe Node 
+getNodeMaybe :: (Eq a) => a -> Gr a b -> Maybe Node
 getNodeMaybe point gr = node' <$> getContextByLabel point gr
 
 -- | Get an edge based on its label.
@@ -41,8 +41,8 @@ getEdgeMaybe edge gr = listToMaybe . filter (\(_, _, x) -> x == edge) $ labEdges
 
 -- | Insert a node iff it doesn't yet exist in the graph
 insNodeOnce :: (Eq a) => Gr a b -> a -> Gr a b
-insNodeOnce gr p 
-  = case getNodeMaybe p gr of 
+insNodeOnce gr p
+  = case getNodeMaybe p gr of
       Just _  -> gr
       Nothing -> let n = snd (nodeRange gr) + 1
                      updatedGr = insNode (n, p) gr
@@ -55,8 +55,8 @@ insNodesOnce ps gr
 
 -- | Insert an edge iff it doesn't yet exist in the graph.
 insEdgeOnce :: BoardGraph -> UndirectedEdge -> BoardGraph
-insEdgeOnce gr uEdge 
-  = case getEdgeMaybe uEdge gr of 
+insEdgeOnce gr uEdge
+  = case getEdgeMaybe uEdge gr of
       Just _  -> gr
       Nothing -> insEdge (x, y, uEdge) gr
     where x = fromJust $ getNodeMaybe (point1 uEdge) gr
