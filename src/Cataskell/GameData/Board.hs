@@ -1,4 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Cataskell.GameData.Board where
@@ -34,10 +36,36 @@ data HexCenter = HexCenter
 
 makeLenses ''HexCenter
 
-type HexMap = Map.Map CentralPoint HexCenter
-type RoadMap = Map.Map UndirectedEdge (Maybe OnEdge)
-type BuildingMap = Map.Map Point (Maybe OnPoint)
-type HarborMap = Map.Map Point Harbor
+newtype HexMap = HexMap { unHexMap:: Map.Map CentralPoint HexCenter }
+  deriving (Eq, Show, Ord, Read, Monoid)
+
+instance Wrapped HexMap where
+  type Unwrapped HexMap = Map.Map CentralPoint HexCenter
+  _Wrapped' = iso unHexMap HexMap
+  {-# INLINE _Wrapped' #-}
+
+newtype RoadMap = RoadMap { unRoadMap :: Map.Map UndirectedEdge (Maybe OnEdge) }
+  deriving (Eq, Show, Ord, Read, Monoid)
+instance Wrapped RoadMap where
+  type Unwrapped RoadMap = Map.Map UndirectedEdge (Maybe OnEdge)
+  _Wrapped' = iso unRoadMap RoadMap
+  {-# INLINE _Wrapped' #-}
+
+newtype BuildingMap = BuildingMap {unBuildingMap :: Map.Map Point (Maybe OnPoint) }
+  deriving (Eq, Show, Ord, Read, Monoid)
+instance Wrapped BuildingMap where
+  type Unwrapped BuildingMap = Map.Map Point (Maybe OnPoint)
+  _Wrapped' = iso unBuildingMap BuildingMap
+  {-# INLINE _Wrapped' #-}
+
+
+newtype HarborMap = HarborMap { unHarborMap :: Map.Map Point Harbor }
+  deriving (Eq, Show, Ord, Read, Monoid)
+instance Wrapped HarborMap where
+  type Unwrapped HarborMap = Map.Map Point Harbor
+  _Wrapped' = iso unHarborMap HarborMap
+  {-# INLINE _Wrapped' #-}
+
 
 mkHexCenterUnsafe :: Terrain -> Int -> HexCenter
 mkHexCenterUnsafe t r = HexCenter { _terrain = t
@@ -53,7 +81,7 @@ desert :: HexCenter
 desert = mkHexCenter Desert 7
 
 hexMapFromList :: [HexCenter] -> HexMap
-hexMapFromList = Map.fromList . zip hexCenterPoints
+hexMapFromList = HexMap . Map.fromList . zip hexCenterPoints
 
 data Board = Board
   { _hexes :: HexMap
@@ -76,7 +104,7 @@ rolls :: [Int]
 rolls = [2, 12] ++ [3..6] ++ [3..6] ++ [8..11] ++ [8..11]
 
 problemNeighborhoods :: HexMap -> ([CentralPoint], [CentralPoint])
-problemNeighborhoods m
+problemNeighborhoods (HexMap m)
   = let highValued x = x == 6 || x == 8
         pointAndNeighborValued (p, ns) = highValued ((Map.!) rollsMap p) && any highValued ns
         lowValued (p, ns) = not (highValued ((Map.!) rollsMap p) || any highValued ns)
@@ -101,14 +129,14 @@ newHexMap' = do
 
 -- | If two high-value hexes are next to each other, then swap one into a low-valued neighborhood
 swapHighValued :: HexMap -> HexMap
-swapHighValued hexMap
+swapHighValued hexMap@(HexMap m)
   = let doSwap k1 k2 m = let v1 = (Map.!) m k1
                              v2 = (Map.!) m k2
                          in  Map.insert k2 v1 $ Map.insert k1 v2 m
         (tooHigh, tooLow) = problemNeighborhoods hexMap
     in  if null tooHigh
         then hexMap
-        else swapHighValued $ doSwap (head tooHigh) (head tooLow) hexMap
+        else swapHighValued . HexMap $ doSwap (head tooHigh) (head tooLow) m
 
 -- | Generates a hexmap and swaps high-value pieces until a valid one is found
 newHexMap :: (RandomGen g) => Rand g HexMap
@@ -128,7 +156,7 @@ harborPoints = [ [Point (-2,0) Bottom, Point (-3,2) Top]
                ]
 
 harborTypes :: [Harbor]
-harborTypes = replicate 3 ThreeToOne ++ 
+harborTypes = replicate 3 ThreeToOne ++
                 [ Harbor Hill
                 , Harbor Mountain
                 , Harbor Forest
@@ -141,15 +169,15 @@ newHarborMap = do
   harborPoints' <- shuffleM harborPoints
   harborTypes' <- shuffleM harborTypes
   let harborList = concatMap (\(ps,t) -> map (\p -> (p, t)) ps) $ zip harborPoints' harborTypes'
-  return $ Map.fromList harborList
+  return . HarborMap $ Map.fromList harborList
 
 emptyBuildingMap :: BuildingMap
 emptyBuildingMap
   = let validPoints = Set.filter (\x -> position x == Top || position x == Bottom) allPoints
-    in Map.fromSet (const Nothing) validPoints
+    in BuildingMap . Map.fromSet (const Nothing) $ validPoints
 
 emptyRoadMap :: RoadMap
-emptyRoadMap = Map.fromSet (const Nothing) allEdges
+emptyRoadMap = RoadMap . Map.fromSet (const Nothing) $ allEdges
 
 newBoard :: (RandomGen g) => Rand g Board
 newBoard = do
@@ -161,7 +189,7 @@ newBoard = do
                , _harbors = harborMap }
 
 getHabitations :: Board -> Map.Map Point OnPoint
-getHabitations b = Map.mapMaybe id $ view buildings b
+getHabitations b = Map.mapMaybe id . op BuildingMap $ b ^. buildings
 
 filterByColor :: (Colored v) => Color -> Map.Map k v -> Map.Map k v
 filterByColor color' = Map.filter ((== color') . color) 
@@ -170,7 +198,7 @@ getHabitationsFor :: Color -> Board -> Map.Map Point OnPoint
 getHabitationsFor color' = filterByColor color' . getHabitations
 
 getRoads :: Board -> Map.Map UndirectedEdge OnEdge
-getRoads b = Map.mapMaybe id $ view roads b
+getRoads b = Map.mapMaybe id . op RoadMap $ view roads b
 
 getRoadsFor :: Color -> Board -> Map.Map UndirectedEdge OnEdge
 getRoadsFor color' = filterByColor color' . getRoads
@@ -203,14 +231,15 @@ build :: Construct -> Board -> Board
 build bldg brd
   = case bldg of
       Edifice bl@(OnPoint p _ Settlement) -> 
-        let buildings' = Map.adjust (\x -> if isNothing x then Just bl else x) p (brd ^. buildings) 
-        in buildings .~ buildings' $ brd
+        let buildings' = op BuildingMap $ brd ^. buildings
+            buildings'' = BuildingMap $ Map.adjust (\x -> if isNothing x then Just bl else x) p buildings'
+        in buildings .~ buildings'' $ brd
       Edifice bl@(OnPoint p c City) -> 
         let adjuster x = if x == Just (OnPoint p c Settlement) then Just bl else x
-            buildings' = Map.adjust adjuster p (brd ^. buildings) 
+            buildings' = under (_Unwrapping' BuildingMap) (Map.adjust adjuster p) $ (brd ^. buildings)
         in buildings .~ buildings' $ brd
       Roadway bl@(OnEdge e _) -> 
-        let roads' = Map.adjust (\x -> if isNothing x then Just bl else x) e (brd ^. roads)
+        let roads' = under (_Unwrapping' RoadMap) (Map.adjust (\x -> if isNothing x then Just bl else x) e) (brd ^. roads)
         in roads .~ roads' $ brd
 
 centersToNeighbors :: Map.Map CentralPoint [Point]
@@ -221,7 +250,7 @@ getPointsToHexCentersMap b = ptsToHexes
   where ptsToHexes = Map.unionsWith (++) $ concatMap mkPtToHCs hexes'
         mkPtToHCs (k, hC') = map (\x -> Map.singleton x [hC']) $ around k
         around = Set.toList . neighborPoints resourceConnections
-        hexes' = Map.toList . Map.mapKeys fromCenter $ b ^. hexes
+        hexes' = Map.toList . Map.mapKeys fromCenter . op HexMap $ b^.hexes
 
 allResourcesFromRoll :: Int -> Board -> Map.Map Color ResourceCount
 allResourcesFromRoll r b = colorSums

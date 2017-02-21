@@ -16,13 +16,6 @@ instance Arbitrary StdGen where
     seed <- arbitrary
     return $ mkStdGen seed
 
-instance Arbitrary (Map.Map Int [Int]) where
-  arbitrary = do
-    keys <- listOf arbitrary
-    values <- listOf $ listOf1 arbitrary
-    return $ Map.fromList $ zip keys values
-  shrink m = Map.fromList <$> shrink (Map.toList m)
-
 main :: IO ()
 main = hspec spec
 

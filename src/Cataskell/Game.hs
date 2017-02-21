@@ -424,13 +424,13 @@ getPlayerBuildings :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Map.
 getPlayerBuildings playerIndex' = do
   b <- use board
   color' <- preuses (players.ix playerIndex') color
-  return $ Map.mapMaybe id $ Map.filter (\x -> isJust color' && color `fmap` x == color') $ b^.buildings
+  return . Map.mapMaybe id . Map.filter (\x -> isJust color' && color `fmap` x == color') . unBuildingMap $ b^.buildings
 
 getHarbors :: (RandomGen g) => PlayerIndex -> GameStateReturning g (Set HarborDiscount)
 getHarbors playerIndex' = do
   b <- use board
   playerBuildings <- getPlayerBuildings playerIndex'
-  let harbors' = b^.harbors
+  let harbors' = unHarborMap (b^.harbors)
   let myHarbors = Map.elems $ Map.intersectionWith (\_ harbor' -> harbor') playerBuildings harbors'
   return $ Set.unions (genericHarborDiscount 4:map harborDiscount myHarbors)
 
@@ -531,16 +531,16 @@ doInvention playerIndex' (InventionOf res) = do
 
 doMoveRobber :: (RandomGen g) => MoveRobber -> GameState g
 doMoveRobber (MoveRobber dest) = do
-  h <- use (board . hexes)
+  (HexMap h) <- use (board . hexes)
   let robberLoc = fromJust $ findKeyWhere _hasRobber h
-  board . hexes . ix robberLoc . hasRobber .= False
-  board . hexes . ix dest . hasRobber .= True
+  board . hexes . _Wrapping' HexMap . ix robberLoc . hasRobber .= False
+  board . hexes . _Wrapping' HexMap . ix dest . hasRobber .= True
   toSpecialPhase Robbing
 
 playersToRob :: (RandomGen g) => GameStateReturning g (Set GameAction)
 playersToRob = do
   currentPlayer' <- use currentPlayer
-  h <- use (board . hexes)
+  (HexMap h) <- use (board . hexes)
   let robberLoc = fromJust $ findKeyWhere _hasRobber h
   bldgs <- neighborBuildings robberLoc
   ps <- use players

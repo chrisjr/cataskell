@@ -99,10 +99,6 @@ mkGames = replicateM 100 mkGame
 randomGames :: [Game]
 randomGames = evalRand mkGames (mkStdGen 1)
 
-instance (Arbitrary a, Ord a) => Arbitrary (Set a) where
-  arbitrary = Set.fromList <$> arbitrary
-  shrink s = Set.fromList <$> shrink (Set.toList s)
-
 instance Arbitrary SpecialPhase where
   arbitrary = elements [ RobberAttack, MovingRobber, Robbing
                        , FreeRoads 2, FreeRoads 1
@@ -713,7 +709,8 @@ sampleGameSpec = parallel $ do
                          in toJS finalG $ finalG^.winner == Just pI && Set.null (view validActions finalG)
   describe "updateBonuses" $ do
     let urGame = evalRand (newGame (replicate 4 "")) dummyRand
-    let getBonuses pI = view (players . ix pI . bonuses)
+    let getBonuses :: PlayerIndex -> Game -> Set Bonus
+        getBonuses pI = view (players . ix pI . bonuses)
     context "when comparing roads" $ do
       let g = urGame & board.roads .~ blueRoadsLonger
       let g' = execGame updateBonuses g dummyRand

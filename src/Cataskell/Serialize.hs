@@ -63,6 +63,10 @@ instance (ToJSON k, ToJSON a) => ToJSON (Map k a) where
 instance (Ord k, FromJSON k, FromJSON a) => FromJSON (Map k a) where
   parseJSON j = Map.fromList <$> parseJSON j
 
+deriveJSON myOptions ''HexMap
+deriveJSON myOptions ''RoadMap
+deriveJSON myOptions ''BuildingMap
+deriveJSON myOptions ''HarborMap
 deriveJSON myOptions ''Board
 
 -- player

@@ -135,7 +135,7 @@ possibleInitialSettlements player' b
 initialRoadsFor :: Player -> OnPoint -> RoadMap -> [GameAction]
 initialRoadsFor player' o' roads'
   = let point' = o' ^.point
-        roadEdges = filter (\k -> point1 k == point' || point2 k == point') $ Map.keys roads' 
+        roadEdges = filter (\k -> point1 k == point' || point2 k == point') $ Map.keys (unRoadMap roads')
         c' = color player'
     in  map (\e -> mkFree (player'^.playerIndex) $ built . road $ Just (e,c')) roadEdges
 

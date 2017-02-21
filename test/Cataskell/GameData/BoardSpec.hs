@@ -31,19 +31,20 @@ import Cataskell.GameData.BasicsSpec ()
 import Cataskell.UtilSpec() -- for Arbitrary StdGen instance
 
 instance NFData Terrain
+instance NFData ResourceCount
 instance NFData HexCenter
 
 instance Arbitrary HexCenter where
   arbitrary = do
     terrain' <- elements (Desert:terrains)
     roll' <- if terrain' == Desert then elements [7] else elements rolls
-    return $ mkHexCenter terrain' roll' 
+    return $ mkHexCenter terrain' roll'
 
 instance Arbitrary HexMap where
   arbitrary = do
     stdGen <- (arbitrary :: Gen StdGen)
     return $ evalRand newHexMap stdGen
-  shrink m = Map.fromList <$> shrink (Map.toList m)
+  shrink m = HexMap . Map.fromList <$> shrink (Map.toList $ unHexMap m)
 
 instance Arbitrary OnEdge where
   arbitrary = OnEdge <$> arbitrary <*> arbitrary
@@ -55,15 +56,15 @@ instance Arbitrary RoadMap where
   arbitrary = do
     roads' <- listOf (arbitrary :: Gen OnEdge)
     let withRoads = Map.fromList $ map (\r -> (r^.edge, Just r)) roads'
-    return $ Map.union withRoads emptyRoadMap
-  shrink m = Map.fromList <$> shrink (Map.toList m)
+    return $ under (_Unwrapping' RoadMap) (Map.union withRoads) emptyRoadMap
+  shrink m = RoadMap . Map.fromList <$> shrink (Map.toList $ unRoadMap m)
 
 instance Arbitrary BuildingMap where
   arbitrary = do
     buildings' <- listOf (arbitrary :: Gen OnPoint)
     let withBuildings = Map.fromList $ map (\b -> (b^.point, Just b)) buildings'
-    return $ Map.union withBuildings emptyBuildingMap
-  shrink m = Map.fromList <$> shrink (Map.toList m)
+    return $ under (_Unwrapping' BuildingMap) (Map.union withBuildings) emptyBuildingMap
+  shrink m = BuildingMap . Map.fromList <$> shrink (Map.toList $ unBuildingMap m)
 
 instance Arbitrary Harbor where
   arbitrary = elements harborTypes
@@ -72,7 +73,7 @@ instance Arbitrary HarborMap where
   arbitrary = do
     stdGen <- (arbitrary :: Gen StdGen)
     return $ evalRand newHarborMap stdGen
-  shrink m = Map.fromList <$> shrink (Map.toList m)
+  shrink m = HarborMap . Map.fromList <$> shrink (Map.toList $ unHarborMap m)
 
 instance Arbitrary Board where
   arbitrary = do
@@ -92,7 +93,7 @@ fromRTBoard :: RTBoard -> Board
 fromRTBoard (RT b) = b
 
 nonceRand :: StdGen
-nonceRand = mkStdGen 0 
+nonceRand = mkStdGen 0
 
 instance Arbitrary RTBoard where
   arbitrary = do
@@ -100,8 +101,8 @@ instance Arbitrary RTBoard where
     r <- elements [blueRoads, blueRoads2]
     return . RT $ board' { _roads = r, _buildings = interruptSettlement (Point (1,-2) Top) }
   shrink rt = map RT $ tail $ Board <$> shrink' (_hexes b)
-                                    <*> [Map.filter isJust (_roads b)]
-                                    <*> [Map.filter isJust (_buildings b)]
+                                    <*> [under (_Unwrapping' RoadMap) (Map.filter isJust) (_roads b)]
+                                    <*> [under (_Unwrapping' BuildingMap) (Map.filter isJust) (_buildings b)]
                                     <*> shrink' (_harbors b)
     where b = fromRTBoard rt
           shrink' a = a : shrink a
@@ -133,7 +134,7 @@ hexMapSpec :: Spec
 hexMapSpec = parallel $ do
   describe "A HexMap" $ do
     it "should create a randomly generated set of terrains and rolls" $ property $
-      \hexMap -> Map.size (hexMap :: HexMap) == 19
+      \(HexMap hexMap) -> Map.size hexMap == 19
     it "should have one 2, one 7, one 12, and two of everything else" $ property $
       let rollCounts h = counts . map _roll $ Map.elems h
           a h = rollCounts h Map.! 2 == 1
@@ -141,35 +142,37 @@ hexMapSpec = parallel $ do
           c h = rollCounts h Map.! 12 == 1
           d h = all (== 2) $ map ((Map.!) (rollCounts h)) [3..6]
           e h = all (== 2) $ map ((Map.!) (rollCounts h)) [8..11]
-      in  \hexMap -> all ($ (hexMap :: HexMap)) [a,b,c,d,e]
+      in  \(HexMap hexMap) -> all ($ hexMap) [a,b,c,d,e]
     it "should have 3 hills, 4 pastures, 3 mountains, 4 fields, 4 forests, and 1 desert" $ property $
-      \hexMap -> let terrainCounts = counts . map _terrain $ Map.elems (hexMap :: HexMap)
-                     h  = terrainCounts Map.! Hill     == 3
-                     p  = terrainCounts Map.! Pasture  == 4
-                     m  = terrainCounts Map.! Mountain == 3
-                     fi = terrainCounts Map.! Field    == 4
-                     fo = terrainCounts Map.! Forest   == 4
-                     d  = terrainCounts Map.! Desert   == 1
-                in h && p && m && fi && fo && d
-    it "should have no high-value terrains (6 or 8) next to each other" $ property $ \hexMap -> 
+      \(HexMap hexMap) ->
+        let terrainCounts = counts . map _terrain $ Map.elems hexMap
+            h  = terrainCounts Map.! Hill     == 3
+            p  = terrainCounts Map.! Pasture  == 4
+            m  = terrainCounts Map.! Mountain == 3
+            fi = terrainCounts Map.! Field    == 4
+            fo = terrainCounts Map.! Forest   == 4
+            d  = terrainCounts Map.! Desert   == 1
+        in h && p && m && fi && fo && d
+    it "should have no high-value terrains (6 or 8) next to each other" $ property $ \hexMap ->
       checkHexNeighbors hexMap
   describe "the Desert" $
     it "should have roll equal to 7" $ property $
-      \hexMap -> let desertHex = head . filter ((== Desert) . _terrain) $ Map.elems (hexMap :: HexMap)
-                 in _roll desertHex == 7
+      \(HexMap hexMap) ->
+        let desertHex = head . filter ((== Desert) . _terrain) $ Map.elems hexMap
+        in _roll desertHex == 7
 
 buildingMapSpec :: Spec
 buildingMapSpec = parallel $ do
   describe "A BuildingMap" $ do
     it "should have 54 keys" $
-      Map.size emptyBuildingMap `shouldBe` 54
+      Map.size (unBuildingMap emptyBuildingMap) `shouldBe` 54
     it "should start off empty" $
-      Map.elems emptyBuildingMap `shouldSatisfy` all (== Nothing)
+      Map.elems (unBuildingMap emptyBuildingMap) `shouldSatisfy` all (== Nothing)
   describe "A RoadMap" $ do
     it "should have 72 keys" $
-      Map.size emptyRoadMap `shouldBe` 72
+      Map.size (unRoadMap emptyRoadMap) `shouldBe` 72
     it "should start off empty" $
-      Map.elems emptyRoadMap `shouldSatisfy` all (== Nothing)
+      Map.elems (unRoadMap emptyRoadMap) `shouldSatisfy` all (== Nothing)
   describe "A Board" $ do
     it "should start off with no buildings and no roads" $ property $
       \board -> view buildings (board :: Board) == emptyBuildingMap
@@ -193,10 +196,10 @@ getE (Roadway (OnEdge e _)) = e
 getE _ = error "not a road"
 
 mkRoadMap :: [UndirectedEdge] -> Color -> RoadMap
-mkRoadMap es' color' = Map.fromList $ zip es' (map (\e -> Just $ OnEdge e color') es')
+mkRoadMap es' color' = RoadMap . Map.fromList $ zip es' (map (\e -> Just $ OnEdge e color') es')
 
 interruptSettlement :: Point -> BuildingMap
-interruptSettlement p = Map.singleton p (Just $ OnPoint p Red Settlement)
+interruptSettlement p = BuildingMap $ Map.singleton p (Just $ OnPoint p Red Settlement)
 
 blueRoads :: RoadMap
 blueRoads = let ps = [ Point (0, -3) Bottom
@@ -227,12 +230,12 @@ addedEdge :: UndirectedEdge
 addedEdge = L.mkEdge (2,-3, Bottom) (2,-2, Top)
 
 blueRoads2 :: RoadMap
-blueRoads2 = Map.union (mkRoadMap [addedEdge] Blue) blueRoads
+blueRoads2 = under (_Unwrapping' RoadMap) (Map.union (unRoadMap $ mkRoadMap [addedEdge] Blue)) blueRoads
 
 longerEdges :: [UndirectedEdge]
 longerEdges = let ps = [ Point (0, -3) Bottom
                        , Point (-1,-1) Top
-                       , Point (1,-2) Bottom 
+                       , Point (1,-2) Bottom
                        , Point (-2,0) Top
                        , Point (-2, -1) Bottom
                        , Point (-3,-1) Top
@@ -279,11 +282,11 @@ functionsSpec = parallel $ do
       let isEmpty' = Map.null . Map.mapMaybe id
       it "should prohibit building if player only controls one side" $ property $
         \rt -> let b = fromRTBoard rt
-                   hasNeeded = isNothing (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty' (_buildings b))
+                   hasNeeded = isNothing (join $ Map.lookup addedEdge (unRoadMap $ _roads b)) && not (isEmpty' (unBuildingMap $ _buildings b))
                in hasNeeded ==> Set.map getE (validRoadsFor Blue b) === validEdges
       it "should allow building if player controls both sides" $ property $
         \rt -> let b = fromRTBoard rt
-                   hasNeeded = isJust (join $ Map.lookup addedEdge (_roads b)) && not (isEmpty' (_buildings b))
+                   hasNeeded = isJust (join $ Map.lookup addedEdge (unRoadMap $ _roads b)) && not (isEmpty' (unBuildingMap $ _buildings b))
                in hasNeeded ==> Set.map getE (validRoadsFor Blue b) === Set.union invalidEdges validEdges
   describe "validSettlementsFor" $
     it "should never include an existing settlement among valid options" $ property $
@@ -299,13 +302,13 @@ functionsSpec = parallel $ do
   describe "roadGraphForColor" $ do
     let b' = evalRand newBoard (mkStdGen 1)
     it "should return a graph of connected roads for a color" $ do
-      let roads' = Map.union blueRoads2 (_roads b')
+      let roads' = RoadMap $ Map.union (unRoadMap blueRoads2) (unRoadMap $ _roads b')
       let board' = b' { _roads = roads' }
       let gr' = roadGraphForColor Blue board'
       labNodes gr' `shouldSatisfy` (== 4) . length
       labEdges gr' `shouldSatisfy` (== 4) . length -- 2 edges, both ways
     it "should not have a link between roads separated by an enemy settlement" $ do
-      let interruption = Map.union (interruptSettlement (Point (-1,-1) Bottom)) emptyBuildingMap
+      let interruption = under (_Unwrapping' BuildingMap) (Map.union (unBuildingMap $ interruptSettlement (Point (-1,-1) Bottom))) emptyBuildingMap
       let orangeLongest = b' { _roads = orangeRoads, _buildings = interruption }
       let gr' = roadGraphForColor Orange orangeLongest
       let e1 = L.mkEdge (-1,-1,Bottom) (-2,1,Top)
@@ -319,24 +322,23 @@ functionsSpec = parallel $ do
     let board' = evalRand newBoard (mkStdGen 0)
     let roads' = _roads board'
     it "should return the color of the player with the longest road and its length" $ do
-      let blueLongest = Map.union blueRoads roads'
+      let blueLongest = RoadMap $ Map.union (unRoadMap blueRoads) (unRoadMap $ roads')
       let blueLongestBoard = board' { _roads = blueLongest }
       longestRoad blueLongestBoard `shouldBe` (Blue, 3)
     it "should return a different longest road when a longer road appears" $ do
       let redRoads = mkRoadMap longerEdges Red
-      let redLongest = Map.unions [redRoads, blueRoads, roads']
+      let redLongest = RoadMap $ Map.unions (map unRoadMap [redRoads, blueRoads, roads'])
       let redLongestBoard = board' { _roads = redLongest }
       longestRoad redLongestBoard `shouldBe` (Red, 6)
     it "should count only the longest path" $ do
-      let interruption = Map.union (interruptSettlement (Point (-1,-1) Bottom)) emptyBuildingMap
-      let orangeLongest = board' { _roads = orangeRoads, _buildings = interruption }
+      let interruption = under (_Unwrapping' BuildingMap) (Map.union (unBuildingMap $ interruptSettlement (Point (-1,-1) Bottom))) emptyBuildingMap
+          orangeLongest = board' { _roads = orangeRoads, _buildings = interruption }
       longestRoad orangeLongest `shouldBe` (Orange, 9)
     it "should not count roads interrupted by enemy settlements" $ do
-      let whiteLongestRoads = Map.union whiteRoads roads'
+      let whiteLongestRoads = under (_Unwrapping' RoadMap) (Map.union (unRoadMap whiteRoads)) roads'
       let whiteLongest = board' { _roads = whiteLongestRoads }
       longestRoad whiteLongest `shouldBe` (White, 6)
       let p = Point (-2,0) Top
-      let interruption = Map.union (interruptSettlement p) emptyBuildingMap
+      let interruption = under (_Unwrapping' BuildingMap) (Map.union (unBuildingMap $ interruptSettlement p)) emptyBuildingMap
       let whiteLongestInterrupted = board' { _roads = whiteLongestRoads, _buildings = interruption }
       longestRoad whiteLongestInterrupted `shouldBe` (White, 3)
-

@@ -37,13 +37,6 @@ instance Arbitrary Player where
 instance Arbitrary PlayerIndex where
   arbitrary = toPlayerIndex `fmap` elements [0..3]
 
-instance Arbitrary (Map PlayerIndex Player) where
-  arbitrary = do
-    ps <- listOf arbitrary
-    return . Map.fromList $ zip (map (view playerIndex) ps) ps
-  shrink m = Map.fromList <$> shrink' (Map.toList m)
-    where shrink' xs = [map (last . shrink) xs]
-
 main :: IO ()
 main = hspec spec
 
