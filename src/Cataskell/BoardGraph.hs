@@ -8,6 +8,7 @@ import Data.Maybe (listToMaybe, fromJust)
 import Control.Applicative ((<$>))
 import Control.Monad
 import Data.Set (Set)
+import Data.List (find, foldl')
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 import Cataskell.Util
@@ -27,13 +28,9 @@ import Cataskell.GameData.Location ( hexCenterPoints
 type BoardGraph = Gr Point UndirectedEdge
 type BoardNodeContext = Context Point UndirectedEdge
 
--- | Find adjacents and the node itself
-getContextByLabel :: (Eq a) => a -> Gr a b -> Maybe (Context a b)
-getContextByLabel point gr = listToMaybe $ gsel (\x -> lab' x == point) gr
-
 -- | Get a node based on its point definition.
 getNodeMaybe :: (Eq a) => a -> Gr a b -> Maybe Node
-getNodeMaybe point gr = node' <$> getContextByLabel point gr
+getNodeMaybe point gr = fmap fst . find (\(_, l) -> l == point) $ labNodes gr
 
 -- | Get an edge based on its label.
 getEdgeMaybe :: (Eq b) => b -> Gr a b -> Maybe (LEdge b)
@@ -44,7 +41,7 @@ insNodeOnce :: (Eq a) => Gr a b -> a -> Gr a b
 insNodeOnce gr p
   = case getNodeMaybe p gr of
       Just _  -> gr
-      Nothing -> let n = snd (nodeRange gr) + 1
+      Nothing -> let n = head $ newNodes 1 gr
                      updatedGr = insNode (n, p) gr
                  in  updatedGr
 
@@ -65,7 +62,7 @@ insEdgeOnce gr uEdge
 -- | Insert multiple edges iff they don't yet exist in the graph.
 insEdgesOnce :: [UndirectedEdge] -> BoardGraph -> BoardGraph
 insEdgesOnce uEdges gr
- = foldl insEdgeOnce gr uEdges
+ = foldl' insEdgeOnce gr uEdges
 
 -- | Add a hex to the graph at specified coordinate, reusing vertices if possible.
 addHex :: BoardGraph -> CentralPoint -> BoardGraph

@@ -30,7 +30,7 @@ spec = parallel $ do
       let edges = labEdges $ elfilter (\x -> edgeType x == Between) hex
       length edges `shouldBe` (12 :: Int)
       let pairs = Set.fromList $ map (\(x,y,_) -> (x,y)) edges
-      let oneway = Set.fromList [(2,3), (3,4), (4,5), (5,6), (6,7), (7,2)] 
+      let oneway = Set.fromList  [(1,2), (2,3), (3,4), (4,5), (5,6), (6,1)]
       pairs `shouldBe` Set.union oneway (Set.map swap oneway)
 
   describe "A board graph" $ do
