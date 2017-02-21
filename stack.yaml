@@ -1,0 +1,9 @@
+flags: {}
+extra-package-dbs: []
+packages:
+- '.'
+extra-deps:
+- dotgen-0.4.2
+- engine-io-snap-1.0.3
+- fgl-visualize-0.1.0.1
+resolver: lts-6.30
