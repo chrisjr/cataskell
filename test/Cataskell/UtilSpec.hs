@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Cataskell.UtilSpec (main, spec) where
 
@@ -62,8 +63,9 @@ spec = parallel $ do
                in  hasKV && noKVforFakeKV
   describe "findKeyWhere" $
     it "should return Just key if a value matching the predicate is found, else Nothing" $ property $
-      \m -> let (first', k, v) = getFirst (m :: Map.Map Int [Int])
-            in isJust first' ==>
+      \(m :: Map.Map Int [Int]) ->
+            let (first', k, v) = getFirst m
+            in isJust first' && fmap (not . null) v == Just True ==>
                let k' = fromJust k
                    v' = head $ fromJust v
                    isK = (findKeyWhere (elem v') m) == Just k'
@@ -73,7 +75,7 @@ spec = parallel $ do
   describe "findValueWhere" $
     it "should return Just value if a value matching the predicate is found, else Nothing" $ property $
       \m -> let (first', _, v) = getFirst (m :: Map.Map Int [Int])
-            in isJust first' ==>
+            in isJust first' && fmap (not . null) v == Just True ==>
                let v' = fromJust v
                    isV = (findValueWhere (elem (head v')) m) == (Just v')
                    fakeV = 1 + maximum (concat $ Map.elems m)

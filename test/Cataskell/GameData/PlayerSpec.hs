@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Cataskell.GameData.PlayerSpec (main, spec) where
 
@@ -8,10 +8,11 @@ import Data.Monoid
 import Cataskell.GameData.Basics
 import Cataskell.GameData.Player
 import Cataskell.GameData.Resources
-import Control.Applicative ((<$>), (<*>))
+import Control.Arrow ((&&&))
 import Data.Maybe (isNothing)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Control.Lens hiding (elements)
 
 import Cataskell.GameData.BasicsSpec() -- get Arbitrary ResourceCount 
@@ -36,6 +37,15 @@ instance Arbitrary Player where
 
 instance Arbitrary PlayerIndex where
   arbitrary = toPlayerIndex `fmap` elements [0..3]
+
+newtype PlayerMap = PlayerMap (Map PlayerIndex Player)
+  deriving (Eq, Show, Ord)
+
+instance Arbitrary PlayerMap where
+  arbitrary = do
+    (xs :: [Player]) <- arbitrary
+    let xs' = map (_playerIndex &&& id) xs
+    pure . PlayerMap $ Map.fromList xs'
 
 main :: IO ()
 main = hspec spec
@@ -71,4 +81,4 @@ spec = parallel $ do
       \player -> nonNegative $ view resources (player :: Player)
   describe "A Map PlayerIndex Player" $
     it "should have keys matching the PlayerIndex stored in the player object" $ property $
-      \pmap -> all (\(pI, p) -> pI == (p^.playerIndex)) $ Map.toList (pmap :: Map PlayerIndex Player)
+      \(PlayerMap pmap)-> all (\(pI, p) -> pI == (p^.playerIndex)) $ Map.toList pmap
